@@ -1,0 +1,6 @@
+{
+    "_description": "配置文件模板 - 请复制为 config.json 并填入真实值",
+    "_link": "https://www.coze.cn/work_flow?workflow_id=YOUR_WORKFLOW_ID&space_id=YOUR_SPACE_ID",
+    "workflow_id": "YOUR_WORKFLOW_ID_HERE",
+    "api_token": "YOUR_API_TOKEN_HERE"
+}

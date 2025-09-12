@@ -11,12 +11,10 @@
 - 📁 **批量操作**: 支持微信文件夹批量处理
 
 ## 项目结构
-
-```markdown
 ```
 ├── essay_processor.py          # 主处理器 - 调用Coze批改作文
 ├── config/
-│   └── config.json            # 配置文件 (需要设置API密钥)
+│   └── config.example.json          # 配置文件 (需要设置API密钥)
 ├── post_process/              # 后处理工具
 │   ├── txt_result_orgnize.py  # 结果格式化
 │   └── txt_to_image_converter.py

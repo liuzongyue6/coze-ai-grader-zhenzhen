@@ -12,15 +12,16 @@
 
 ## 项目结构
 ```
-├── essay_processor.py          # 主处理器 - 调用Coze批改作文
+├── essay_processor.py              # 主处理器 - 调用Coze API
+├── post_process_cache.py           # 后处理 - 处理Coze API返回json
 ├── config/
-│   └── config.example.json          # 配置文件 (需要设置API密钥)
-├── post_process/              # 后处理工具
-│   ├── txt_result_orgnize.py  # 结果格式化
+│   └── config.example.json         # 配置文件 (需要设置API密钥)
+├── post_process/                   # 后处理工具
+│   ├── txt_result_orgnize.py   
 │   └── txt_to_image_converter.py
 ├── utils/
-│   └── compress_file.py       # 图片压缩工具
-└── test/                      # 测试文件夹
+│   └── compress_file.py            # 图片压缩工具
+└── test/                           # 测试文件夹
 ```
 
 ## 快速开始

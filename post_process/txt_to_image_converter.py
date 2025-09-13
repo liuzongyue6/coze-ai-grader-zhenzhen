@@ -227,6 +227,117 @@ class TextToImageConverter:
         report_data['sections'] = sections
         return report_data
     
+    def _parse_translation_format(self, content: str) -> dict:
+        """解析翻译批改格式的报告"""
+        report_data = {
+            'title': '英语翻译批改报告',
+            'student_name': '',
+            'date': '',
+            'sections': []
+        }
+        
+        lines = content.split('\n')
+        
+        # 提取头部信息
+        for line in lines:
+            line = line.strip()
+            if line.startswith('处理时间:'):
+                report_data['date'] = line.replace('处理时间:', '').strip()
+            elif line.startswith('学生姓名:'):
+                report_data['student_name'] = line.replace('学生姓名:', '').strip()
+        
+        # 提取题目总数
+        summary_section = None
+        for line in lines:
+            if line.strip().startswith('一共读到'):
+                summary_section = {
+                    'title': '批改概要',
+                    'content': line.strip()
+                }
+                break
+        
+        if summary_section:
+            report_data['sections'].append(summary_section)
+        
+        # 解析题目部分
+        current_question = None
+        current_field = None
+        field_content = []
+        
+        for line in lines:
+            line = line.strip()
+            
+            # 检测题目开始
+            if line.startswith('【题 ') and line.endswith('】'):
+                # 保存之前的字段
+                if current_question and current_field and field_content:
+                    if current_field not in current_question:
+                        current_question[current_field] = []
+                    current_question[current_field].extend(field_content)
+                
+                # 保存之前的题目
+                if current_question:
+                    question_content = self._format_question_content(current_question)
+                    report_data['sections'].append({
+                        'title': current_question['title'],
+                        'content': question_content
+                    })
+                
+                # 开始新题目
+                current_question = {'title': line[1:-1]}  # 去掉【】
+                current_field = None
+                field_content = []
+            
+            # 跳过分隔线
+            elif '=' in line and len(set(line)) <= 2:
+                continue
+            
+            # 检测字段
+            elif line.endswith(':') and line.rstrip(':') in ['学生翻译', '思路', '批改']:
+                # 保存之前的字段
+                if current_question and current_field and field_content:
+                    if current_field not in current_question:
+                        current_question[current_field] = []
+                    current_question[current_field].extend(field_content)
+                
+                # 开始新字段
+                current_field = line.rstrip(':')
+                field_content = []
+            
+            # 添加内容到当前字段
+            elif line and current_question and current_field:
+                field_content.append(line)
+        
+        # 处理最后一个字段和题目
+        if current_question and current_field and field_content:
+            if current_field not in current_question:
+                current_question[current_field] = []
+            current_question[current_field].extend(field_content)
+        
+        if current_question:
+            question_content = self._format_question_content(current_question)
+            report_data['sections'].append({
+                'title': current_question['title'],
+                'content': question_content
+            })
+        
+        return report_data
+    
+    def _format_question_content(self, question: dict) -> str:
+        """格式化题目内容"""
+        content_parts = []
+        
+        # 按顺序显示字段
+        field_order = ['学生翻译', '思路', '批改']
+        
+        for field in field_order:
+            if field in question and question[field]:
+                content_parts.append(f"**{field}:**")
+                content_parts.extend(question[field])
+                content_parts.append("")  # 空行分隔
+        
+        return '\n'.join(content_parts).strip()
+
     def convert_txt_to_image(self, txt_file_path: str, output_path: str) -> bool:
         """将txt文件转换为图片"""
         try:
@@ -235,9 +346,14 @@ class TextToImageConverter:
                 content = f.read()
             
             # 判断文件类型并解析
-            if '英语作文批改报告' in content and '详细评价' in content:
+            if '=== 批改结果 ===' in content and '【题 ' in content:
+                # 新的翻译批改格式
+                report_data = self._parse_translation_format(content)
+            elif '英语作文批改报告' in content and '详细评价' in content:
+                # 原有的作文批改格式
                 report_data = self._parse_formatted_report(content)
             else:
+                # 原始结果格式
                 report_data = self._parse_raw_result(content)
             
             # 创建图片
@@ -294,11 +410,16 @@ class TextToImageConverter:
                         break
                     
                     # 处理特殊格式
-                    if line.startswith('•') or line.startswith('○'):
+                    if line.startswith('**') and line.endswith(':**'):
+                        # 字段标题（如 **学生翻译:** ）
+                        clean_line = line[2:-3] + ':'  # 去掉 ** 保留冒号
+                        draw.text((self.margin, current_y), clean_line, 
+                                 fill=self.colors['highlight'], font=self.fonts['bold'])
+                    elif line.startswith('•') or line.startswith('○'):
                         draw.text((self.margin + 20, current_y), line, 
                                  fill=self.colors['content'], font=self.fonts['content'])
                     elif line.startswith('###') or line.startswith('**'):
-                        # 子标题
+                        # 其他子标题
                         clean_line = re.sub(r'[#*]', '', line).strip()
                         draw.text((self.margin + 10, current_y), clean_line, 
                                  fill=self.colors['highlight'], font=self.fonts['bold'])

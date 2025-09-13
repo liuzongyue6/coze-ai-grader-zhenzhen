@@ -10,29 +10,36 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
-# 默认格式化配置
-DEFAULT_FORMAT_CONFIG = {
-    # 数据提取配置
-    "data_field": "output_arr_obj",  # 主要数据字段名
-    "content_pattern": r"content='(.+?)'(?:\s+node_title=|$)",  # content提取正则
-    
-    # 格式化文本配置
-    "title": "=== 批改结果 ===",
-    "summary_template": "一共读到 {count} 题",
-    "item_title_template": "【题 {index}】",
-    "separator": "=" * 50,
-    
-    # 字段显示配置
-    "field_mappings": {
-        "std_input": "学生翻译",
-        "thought": "思路", 
-        "comment": "批改"
-    },
-    "field_order": ["std_input", "thought", "comment"],  # 字段显示顺序
-    
-    # 输出文件配置
-    "output_prefix": "格式化批改结果",
-    "file_header_template": """=== 批改结果 ===
+def load_format_config() -> Dict[str, Any]:
+    """加载格式化配置"""
+    try:
+        # 导入配置模块
+        from config.translation_format_config import get_format_config
+        config = get_format_config()
+        print("✅ 已加载配置文件: config/translation_format_config.py")
+        return config
+    except ImportError as e:
+        print(f"⚠️ 配置文件导入失败: {str(e)}")
+        print("⚠️ 使用默认配置")
+        return get_default_config()
+
+def get_default_config() -> Dict[str, Any]:
+    """获取默认配置（备用）"""
+    return {
+        "data_field": "output_arr_obj",
+        "content_pattern": r"content='(.+?)'(?:\s+node_title=|$)",
+        "title": "=== 批改结果 ===",
+        "summary_template": "一共读到 {count} 题",
+        "item_title_template": "【题 {index}】",
+        "separator": "=" * 50,
+        "field_mappings": {
+            "std_input": "学生翻译",
+            "thought": "思路", 
+            "comment": "批改"
+        },
+        "field_order": ["std_input", "thought", "comment"],
+        "output_prefix": "格式化批改结果",
+        "file_header_template": """=== 批改结果 ===
 
 处理时间: {process_time}
 学生姓名: {folder_name}
@@ -40,28 +47,14 @@ DEFAULT_FORMAT_CONFIG = {
 消息数量: {message_count}
 
 """
-}
-
-def load_format_config(config_file: Optional[str] = None) -> Dict[str, Any]:
-    """加载格式化配置"""
-    if config_file and os.path.exists(config_file):
-        try:
-            with open(config_file, 'r', encoding='utf-8') as f:
-                user_config = json.load(f)
-            # 合并用户配置和默认配置
-            config = DEFAULT_FORMAT_CONFIG.copy()
-            config.update(user_config)
-            return config
-        except Exception as e:
-            print(f"⚠️ 配置文件加载失败，使用默认配置: {str(e)}")
-    
-    return DEFAULT_FORMAT_CONFIG.copy()
+    }
 
 def extract_json_from_content(content_str: str, config: Dict[str, Any]) -> Optional[Dict]:
     """从content字符串中提取JSON数据"""
     try:
         # 使用配置中的正则模式
-        pattern = config.get("content_pattern", DEFAULT_FORMAT_CONFIG["content_pattern"])
+        default_config = get_default_config()
+        pattern = config.get("content_pattern", default_config["content_pattern"])
         content_match = re.search(pattern, content_str, re.DOTALL)
         
         if content_match:
@@ -150,7 +143,7 @@ def process_cache_file(cache_file_path: str, config: Dict[str, Any]) -> bool:
         # 写入格式化结果
         with open(output_file, 'w', encoding='utf-8') as f:
             # 使用配置的文件头模板
-            header_template = config.get("file_header_template", DEFAULT_FORMAT_CONFIG["file_header_template"])
+            header_template = config.get("file_header_template", get_default_config()["file_header_template"])
             header = header_template.format(
                 process_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 folder_name=folder_name,
@@ -220,18 +213,9 @@ def main():
     """主函数"""
     print("=== 缓存文件后处理器 ===\n")
     
-    # 配置文件路径
-    config_file = "post_process_config.json"
-    
-    # 如果配置文件不存在，创建示例配置
-    if not os.path.exists(config_file):
-        print(f"🔧 配置文件不存在，创建示例配置: {config_file}")
-        create_example_config(config_file)
-        print("📝 请根据需要修改配置文件，然后重新运行程序\n")
-    
     # 加载配置
-    config = load_format_config(config_file)
-    print(f"📋 已加载配置，数据字段: {config['data_field']}")
+    config = load_format_config()
+    print(f"📋 数据字段: {config['data_field']}")
     print(f"📋 字段映射: {config['field_mappings']}")
     print(f"📋 字段顺序: {config['field_order']}\n")
     

@@ -1,76 +1,76 @@
 # AI Essay Grader
 
-🤖 基于 Coze Workflow 的英语作文自动批改系统
+🤖 Automated English Essay Grading System Based on Coze Workflow
 
-## 功能特点
+## Features
 
-- 📸 **批量图片处理**: 自动处理文件夹中的作文图片
-- 🎯 **AI智能批改**: 使用 Coze 工作流进行作文评价
-- 📊 **详细反馈**: 提供英语评价和书写评价
-- 🔄 **后处理工具**: 格式化结果，压缩图片
-- 📁 **批量操作**: 支持微信文件夹批量处理
+- 📸 **Batch Image Processing**: Automatically process essay images in folders
+- 🎯 **AI-Powered Grading**: Use Coze workflow for essay evaluation
+- 📊 **Detailed Feedback**: Provide English evaluation and writing assessment
+- 🔄 **Post-processing Tools**: Format results and compress images
+- 📁 **Batch Operations**: Support batch processing of WeChat folders
 
-## 项目结构
+## Project Structure
 ```
-├── essay_processor.py              # 主处理器 - 调用Coze API
-├── post_process_cache.py           # 后处理 - 处理Coze API返回json
+├── essay_processor.py              # Main processor - calls Coze API
+├── post_process_cache.py           # Post-processing - handles Coze API JSON response
 ├── config/
-│   └── config.example.json         # 配置文件 (需要设置API密钥)
-├── post_process/                   # 后处理工具
+│   └── config.example.json         # Configuration file (API keys required)
+├── post_process/                   # Post-processing tools
 │   ├── txt_result_orgnize.py   
 │   └── txt_to_image_converter.py
 ├── utils/
-│   └── compress_file.py            # 图片压缩工具
-└── test/                           # 测试文件夹
+│   └── compress_file.py            # Image compression tool
+└── test/                           # Test folder
 ```
 
-## 快速开始
+## Quick Start
 
-### 1. 安装依赖
+### 1. Install Dependencies
 
 ```bash
 pip install cozepy pillow
 ```
 
-### 2. 配置设置
+### 2. Configuration Setup
 
-复制 `config/config.example.json` 到 `config/config.json` 并填入你的配置：
+Copy `config/config.example.json` to `config/config.json` and fill in your configuration:
 
 ```json
 {
-    "workflow_id": "你的工作流ID",
-    "api_token": "你的API令牌"
+    "workflow_id": "your_workflow_id",
+    "api_token": "your_api_token"
 }
 ```
 
-### 3. 运行程序
+### 3. Run the Program
 
 ```bash
 python essay_processor.py
 ```
 
-## 使用说明
+## Usage Instructions
 
-1. 将作文图片按学生姓名分文件夹存放
-2. 运行主程序，系统会自动：
-   - 上传图片到 Coze
-   - 调用工作流进行批改
-   - 生成批改结果文件
-3. 使用后处理工具格式化结果
+1. Organize essay images in folders by student names
+2. Run the main program, the system will automatically:
+   - Upload images to Coze
+   - Call workflow for grading
+   - Generate grading result files
+3. Use post-processing tools to format results
 
-## 工具说明
+## Tool Descriptions
 
-- **essay_processor.py**: 主要的批改处理器
-- **post_process/txt_result_orgnize.py**: 将批改结果格式化为易读的报告
-- **utils/compress_file.py**: 压缩图片以减少上传时间
+- **coze_workflow_client.py**: Main processor
+- **api_response_format.py**: Format API results into readable txt
+- **post_process.py**: post_process the txt file
+- **utils/compress_file.py**: Compress images to reduce upload time
 
-## 注意事项
+## Notes
 
-- 请确保 Coze API 配置正确
-- 支持的图片格式：PNG, JPG, JPEG, BMP, GIF
-- 建议图片大小不超过 5MB
+- Ensure Coze API is configured correctly
+- Supported image formats: PNG, JPG, JPEG, BMP, GIF
+- Recommended image size: under 2MB
 
-## 许可证
+## License
 
 MIT License
-```

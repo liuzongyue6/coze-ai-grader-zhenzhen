@@ -19,42 +19,14 @@ def load_format_config() -> Dict[str, Any]:
         print("✅ 已加载配置文件: config/translation_format_config.py")
         return config
     except ImportError as e:
-        print(f"⚠️ 配置文件导入失败: {str(e)}")
-        print("⚠️ 使用默认配置")
-        return get_default_config()
-
-def get_default_config() -> Dict[str, Any]:
-    """获取默认配置（备用）"""
-    return {
-        "data_field": "output_arr_obj",
-        "content_pattern": r"content='(.+?)'(?:\s+node_title=|$)",
-        "title": "=== 批改结果 ===",
-        "summary_template": "一共读到 {count} 题",
-        "item_title_template": "【题 {index}】",
-        "separator": "=" * 50,
-        "field_mappings": {
-            "std_input": "学生翻译",
-            "thought": "思路", 
-            "comment": "批改"
-        },
-        "field_order": ["std_input", "thought", "comment"],
-        "output_prefix": "格式化批改结果",
-        "file_header_template": """=== 批改结果 ===
-
-处理时间: {process_time}
-学生姓名: {folder_name}
-原始缓存: {cache_file}
-消息数量: {message_count}
-
-"""
-    }
+        print(f"❌ 配置文件导入失败: {str(e)}")
+        raise ImportError("必须提供配置文件 config/translation_format_config.py") from e
 
 def extract_json_from_content(content_str: str, config: Dict[str, Any]) -> Optional[Dict]:
     """从content字符串中提取JSON数据"""
     try:
         # 使用配置中的正则模式
-        default_config = get_default_config()
-        pattern = config.get("content_pattern", default_config["content_pattern"])
+        pattern = config["content_pattern"]  # 直接使用配置，不提供默认值
         content_match = re.search(pattern, content_str, re.DOTALL)
         
         if content_match:
@@ -143,7 +115,7 @@ def process_cache_file(cache_file_path: str, config: Dict[str, Any]) -> bool:
         # 写入格式化结果
         with open(output_file, 'w', encoding='utf-8') as f:
             # 使用配置的文件头模板
-            header_template = config.get("file_header_template", get_default_config()["file_header_template"])
+            header_template = config["file_header_template"]  # 直接使用配置，不提供默认值
             header = header_template.format(
                 process_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 folder_name=folder_name,

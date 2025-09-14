@@ -100,7 +100,7 @@ def save_raw_response_cache(folder_path: str, folder_name: str, messages: List, 
         })
     
     # 保存到JSON缓存文件
-    cache_file = os.path.join(folder_path, f"raw_response_cache_{folder_name}_{timestamp}.json")
+    cache_file = os.path.join(folder_path, f"{folder_name}_response_cache_{timestamp}.json")
     try:
         with open(cache_file, 'w', encoding='utf-8') as f:
             json.dump(cache_data, f, ensure_ascii=False, indent=2)
@@ -110,77 +110,41 @@ def save_raw_response_cache(folder_path: str, folder_name: str, messages: List, 
         print(f"   ❌ 保存缓存失败: {str(e)}")
         return None
 
-def handle_workflow_iterator(stream: Stream[WorkflowEvent], output_file, file_ids: List[str], folder_name: str = None, workflow_id: str = None):
-    """处理工作流流式事件并保存到文件"""
+def handle_workflow_iterator(stream: Stream[WorkflowEvent], file_ids: List[str], folder_name: str = None, workflow_id: str = None):
+    """处理工作流流式事件，只收集数据不保存txt文件"""
     messages = []
     errors = []
     
-    with open(output_file, 'w', encoding='utf-8') as f:
-        f.write("=== 作文批改结果 (流式处理) ===\n\n")
-        f.write(f"处理时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        if folder_name:
-            f.write(f"文件夹名称: {folder_name}\n")
-        f.write(f"文件ID数组: {', '.join(file_ids)}\n")
-        f.write(f"文件数量: {len(file_ids)}\n")
-        f.write(f"工作流ID: {workflow_id}\n\n")
-        f.write("=== 处理过程 ===\n")
-        
-        for event in stream:
-            if event.event == WorkflowEventType.MESSAGE:
-                print("got message", event.message)
-                f.write(f"[MESSAGE] {event.message}\n")
-                f.flush()  # 实时写入文件
-                messages.append(event.message)
-                
-            elif event.event == WorkflowEventType.ERROR:
-                print("got error", event.error)
-                f.write(f"[ERROR] {event.error}\n")
-                f.flush()
-                errors.append(event.error)
-                
-            elif event.event == WorkflowEventType.INTERRUPT:
-                print("got interrupt, resuming...")
-                f.write(f"[INTERRUPT] 工作流被中断，正在恢复...\n")
-                f.flush()
-                # 递归处理中断恢复
-                handle_workflow_iterator(
-                    coze.workflows.runs.resume(
-                        workflow_id=workflow_id,
-                        event_id=event.interrupt.interrupt_data.event_id,
-                        resume_data="hey",
-                        interrupt_type=event.interrupt.interrupt_data.type,
-                    ),
-                    output_file,
-                    file_ids,
-                    folder_name,
-                    workflow_id
-                )
-        
-        # 写入最终总结
-        f.write(f"\n=== 处理完成总结 ===\n")
-        f.write(f"总消息数: {len(messages)}\n")
-        f.write(f"总错误数: {len(errors)}\n")
-        
-        if messages:
-            f.write(f"\n=== 所有消息 ===\n")
-            for i, msg in enumerate(messages, 1):
-                f.write(f"消息 {i}: {msg}\n")
-        
-        if errors:
-            f.write(f"\n=== 所有错误 ===\n")
-            for i, err in enumerate(errors, 1):
-                f.write(f"错误 {i}: {err}\n")
+    for event in stream:
+        if event.event == WorkflowEventType.MESSAGE:
+            print("got message", event.message)
+            messages.append(event.message)
+            
+        elif event.event == WorkflowEventType.ERROR:
+            print("got error", event.error)
+            errors.append(event.error)
+            
+        elif event.event == WorkflowEventType.INTERRUPT:
+            print("got interrupt, resuming...")
+            # 递归处理中断恢复
+            sub_messages, sub_errors = handle_workflow_iterator(
+                coze.workflows.runs.resume(
+                    workflow_id=workflow_id,
+                    event_id=event.interrupt.interrupt_data.event_id,
+                    resume_data="hey",
+                    interrupt_type=event.interrupt.interrupt_data.type,
+                ),
+                file_ids,
+                folder_name,
+                workflow_id
+            )
+            messages.extend(sub_messages)
+            errors.extend(sub_errors)
     
-    # 保存原始响应缓存
-    if messages and folder_name:
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        folder_path = os.path.dirname(output_file)
-        save_raw_response_cache(folder_path, folder_name, messages, timestamp)
-    
-    return messages
+    return messages, errors
 
-def process_files_with_workflow_stream(coze, workflow_id, file_ids: List[str], output_file, folder_name: str = None):
-    """使用工作流流式接口处理指定的文件ID数组"""
+def process_files_with_workflow_stream(coze, workflow_id, file_ids: List[str], output_folder: str, folder_name: str = None):
+    """使用工作流流式接口处理指定的文件ID数组，只保存JSON缓存"""
     try:
         print(f"开始流式处理文件数组: {file_ids}")
         print(f"文件数量: {len(file_ids)}")
@@ -203,7 +167,12 @@ def process_files_with_workflow_stream(coze, workflow_id, file_ids: List[str], o
         )
         
         # 处理流式事件
-        messages = handle_workflow_iterator(stream, output_file, file_ids, folder_name, workflow_id)
+        messages, errors = handle_workflow_iterator(stream, file_ids, folder_name, workflow_id)
+        
+        # 只保存JSON缓存
+        if messages and folder_name:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            save_raw_response_cache(output_folder, folder_name, messages, timestamp)
         
         print("流式处理完成!")
         return True, messages
@@ -211,18 +180,9 @@ def process_files_with_workflow_stream(coze, workflow_id, file_ids: List[str], o
     except Exception as e:
         error_msg = f"流式处理文件数组失败: {str(e)}"
         print(error_msg)
-        
-        # 将错误也写入文件
-        try:
-            with open(output_file, 'a', encoding='utf-8') as f:
-                f.write(f"\n=== 处理错误 ===\n")
-                f.write(f"{error_msg}\n")
-        except:
-            pass
-            
         return False, []
 
-def process_wechat_folders(coze, workflow_id, wechat_folder, supported_formats):
+def process_folders(coze, workflow_id, wechat_folder, supported_formats):
     """处理微信作文文件夹中的所有子文件夹"""
     print("=== 第一步：扫描文件夹结构 ===")
     folders_data = scan_wechat_folders(wechat_folder, supported_formats)
@@ -245,23 +205,18 @@ def process_wechat_folders(coze, workflow_id, wechat_folder, supported_formats):
             print(f"   ❌ 文件夹 '{folder_name}' 图片上传失败，跳过处理")
             continue
         
-        # 生成输出文件名并保存到对应的文件夹中
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_file = f"批改结果_{folder_name}_{timestamp}.txt"
         folder_path = os.path.join(wechat_folder, folder_name)
-        output_path = os.path.join(folder_path, output_file)
         
         print(f"   🔄 开始流式处理...")
-        print(f"   📄 输出文件: {output_file}")
+        print(f"   📄 只保存JSON缓存文件")
         
-        # 处理这个文件夹的文件
-        success, messages = process_files_with_workflow_stream(coze, workflow_id, file_ids, output_path, folder_name)
+        # 处理这个文件夹的文件，只保存JSON
+        success, messages = process_files_with_workflow_stream(coze, workflow_id, file_ids, folder_path, folder_name)
         
         if success:
             print(f"   ✅ 文件夹 '{folder_name}' 处理完成!")
-            print(f"   💾 结果已保存到: {output_path}")
             if messages:
-                print(f"   🗂️  原始响应已缓存到JSON文件")
+                print(f"   💾 JSON缓存已保存")
         else:
             print(f"   ❌ 文件夹 '{folder_name}' 处理失败")
         
@@ -272,15 +227,15 @@ def main():
     print("=== 多文件流式处理器启动 ===")
     
     # ======= 配置设置区域 =======
-    config_file = "config/config.translation.json"
+    config_file = "config/config.translation_record.json"
     
-    wechat_folder = r"E:\真真英语\作文\test\translation"
+    folder_tobe_process = r"E:\真真英语\作文\test\Translation_Unit"
     
     # 支持的图片格式 - 可以根据需要添加或删除格式
     supported_formats = ('.png', '.jpg', '.jpeg', '.bmp', '.gif')
     
     print(f"配置文件路径: {config_file}")
-    print(f"微信作文文件夹: {wechat_folder}")
+    print(f"微信作文文件夹: {folder_tobe_process}")
     print(f"支持的图片格式: {supported_formats}")
     # ======= 配置设置区域结束 =======
     
@@ -311,7 +266,7 @@ def main():
         return
     
     # 开始处理
-    process_wechat_folders(coze, workflow_id, wechat_folder, supported_formats)
+    process_folders(coze, workflow_id, folder_tobe_process, supported_formats)
 
 if __name__ == "__main__":
     main()

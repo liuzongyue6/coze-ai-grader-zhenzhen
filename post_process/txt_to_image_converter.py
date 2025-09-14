@@ -15,7 +15,8 @@ class TextToImageConverter:
                  image_width: int = 1200, 
                  image_height: int = 1600,
                  margin: int = 80,
-                 line_spacing: int = 8):
+                 line_spacing: int = 8,
+                 supported_fields: list = None):
         """
         初始化图片转换器
         
@@ -24,12 +25,16 @@ class TextToImageConverter:
             image_height: 图片高度  
             margin: 边距
             line_spacing: 行间距
+            supported_fields: 支持的字段列表
         """
         self.image_width = image_width
         self.image_height = image_height
         self.margin = margin
         self.line_spacing = line_spacing
         self.content_width = image_width - 2 * margin
+        
+        # 支持的字段配置
+        self.supported_fields = supported_fields or ['学生翻译', '思路', '批改']
         
         # 颜色配置
         self.colors = {
@@ -293,7 +298,7 @@ class TextToImageConverter:
                 continue
             
             # 检测字段
-            elif line.endswith(':') and line.rstrip(':') in ['学生翻译', '思路', '批改']:
+            elif line.endswith(':') and line.rstrip(':') in self.supported_fields:
                 # 保存之前的字段
                 if current_question and current_field and field_content:
                     if current_field not in current_question:
@@ -328,7 +333,7 @@ class TextToImageConverter:
         content_parts = []
         
         # 按顺序显示字段
-        field_order = ['学生翻译', '思路', '批改']
+        field_order = self.supported_fields
         
         for field in field_order:
             if field in question and question[field]:
@@ -341,20 +346,34 @@ class TextToImageConverter:
     def convert_txt_to_image(self, txt_file_path: str, output_path: str) -> bool:
         """将txt文件转换为图片"""
         try:
+            print(f"  调试: 开始处理文件 {txt_file_path}")
+            print(f"  调试: 支持的字段 {self.supported_fields}")
+            
             # 读取文件内容
             with open(txt_file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
+            print(f"  调试: 文件内容长度 {len(content)}")
+            print(f"  调试: 包含批改结果标记: {'=== 批改结果 ===' in content}")
+            print(f"  调试: 包含题目标记: {'【题 ' in content}")
+            
             # 判断文件类型并解析
             if '=== 批改结果 ===' in content and '【题 ' in content:
                 # 新的翻译批改格式
+                print("  调试: 使用翻译批改格式解析")
                 report_data = self._parse_translation_format(content)
             elif '英语作文批改报告' in content and '详细评价' in content:
                 # 原有的作文批改格式
+                print("  调试: 使用作文批改格式解析")
                 report_data = self._parse_formatted_report(content)
             else:
                 # 原始结果格式
+                print("  调试: 使用原始结果格式解析")
                 report_data = self._parse_raw_result(content)
+            
+            print(f"  调试: 解析得到 {len(report_data['sections'])} 个章节")
+            for i, section in enumerate(report_data['sections']):
+                print(f"    章节 {i+1}: {section['title']}")
             
             # 创建图片
             image = Image.new('RGB', (self.image_width, self.image_height), self.colors['background'])
@@ -440,17 +459,18 @@ class TextToImageConverter:
             print(f"转换失败 {txt_file_path}: {e}")
             return False
 
-def process_folder(folder_path: str):
+def process_folder(folder_path: str, supported_fields: list = None):
     """处理文件夹中的所有txt文件，图片保存在对应的原始文件夹"""
     if not os.path.exists(folder_path):
         print(f"文件夹不存在: {folder_path}")
         return
     
-    converter = TextToImageConverter()
+    converter = TextToImageConverter(supported_fields=supported_fields)
     success_count = 0
     total_count = 0
     
     print(f"开始处理文件夹: {folder_path}")
+    print(f"支持的字段: {converter.supported_fields}")
     print("-" * 60)
     
     # 递归处理所有txt文件
@@ -481,13 +501,16 @@ def main():
     """主函数"""
     print("=== TXT文件转精美图片生成器 ===")
     
+    # 字段配置 - 用户可以修改这里
+    supported_fields = ['学生翻译', '错误分析', '思路', '批改']  # 可以添加 '错误分析' 等其他字段
+    
     # 获取用户输入的源文件夹路径
-    source_folder = input("请输入要处理的文件夹路径 (或直接回车使用默认): ").strip()
-    if not source_folder:
-        source_folder = r"test"
+
+    source_folder = r"E:\真真英语\作文\test\Translation_Unit"
     
     print(f"\n配置信息:")
     print(f"处理文件夹: {source_folder}")
+    print(f"支持字段: {supported_fields}")
     print("-" * 50)
     
     # 检查源文件夹是否存在
@@ -506,16 +529,10 @@ def main():
         print("未找到TXT文件")
         return
     
-    print(f"找到 {txt_count} 个TXT文件")
-    
-    # 询问用户确认
-    confirm = input("\n确认开始转换吗？(输入 'y' 或 'yes' 继续): ")
-    if confirm.lower() not in ['y', 'yes']:
-        print("操作已取消")
-        return
+    print(f"找到 {txt_count} 个TXT文件，开始转换...")
     
     # 开始处理
-    process_folder(source_folder)
+    process_folder(source_folder, supported_fields)
 
 if __name__ == "__main__":
     main()

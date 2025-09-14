@@ -1,5 +1,6 @@
 """
 后处理缓存文件 - 解析原始API响应并生成格式化的批改结果
+支持单输出和多输出格式配置
 """
 
 import os
@@ -8,26 +9,12 @@ import glob
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Union
 
-def load_format_config() -> Dict[str, Any]:
-    """加载格式化配置"""
-    try:
-        # 导入配置模块
-        from config.translation_format_config import get_format_config
-        config = get_format_config()
-        print("✅ 已加载配置文件: config/translation_format_config.py")
-        return config
-    except ImportError as e:
-        print(f"❌ 配置文件导入失败: {str(e)}")
-        raise ImportError("必须提供配置文件 config/translation_format_config.py") from e
-
-def extract_json_from_content(content_str: str, config: Dict[str, Any]) -> Optional[Dict]:
+def extract_json_from_content(content_str: str, content_pattern: str) -> Optional[Dict]:
     """从content字符串中提取JSON数据"""
     try:
-        # 使用配置中的正则模式
-        pattern = config["content_pattern"]  # 直接使用配置，不提供默认值
-        content_match = re.search(pattern, content_str, re.DOTALL)
+        content_match = re.search(content_pattern, content_str, re.DOTALL)
         
         if content_match:
             json_str = content_match.group(1)
@@ -42,29 +29,27 @@ def extract_json_from_content(content_str: str, config: Dict[str, Any]) -> Optio
         print(f"原始内容: {content_str[:200]}...")
         return None
 
-def format_results(parsed_data: Dict, config: Dict[str, Any]) -> str:
-    """格式化批改结果"""
-    data_field = config.get("data_field", "output_arr_obj")
-    
-    if data_field not in parsed_data:
-        return f"未识别的数据格式，找不到字段 '{data_field}': {json.dumps(parsed_data, ensure_ascii=False, indent=2)}"
-    
-    output_array = parsed_data[data_field]
+def is_multi_output_config(config: Dict[str, Any]) -> bool:
+    """检测是否为多输出配置"""
+    return "output_types" in config and "global_config" in config
+
+def format_single_section(data_array: List[Dict], section_config: Dict[str, Any]) -> str:
+    """格式化单个数据段"""
     formatted_text = ""
     
     # 标题和摘要
-    title = config.get("title", "=== 批改结果 ===")
-    summary_template = config.get("summary_template", "一共读到 {count} 题")
+    title = section_config["title"]
+    summary_template = section_config["summary_template"]
     formatted_text += f"{title}\n\n"
-    formatted_text += f"{summary_template.format(count=len(output_array))}\n\n"
+    formatted_text += f"{summary_template.format(count=len(data_array))}\n\n"
     
     # 处理每个项目
-    item_title_template = config.get("item_title_template", "【题 {index}】")
-    separator = config.get("separator", "=" * 50)
-    field_mappings = config.get("field_mappings", {})
-    field_order = config.get("field_order", list(field_mappings.keys()))
+    item_title_template = section_config["item_title_template"]
+    separator = section_config["separator"]
+    field_mappings = section_config["field_mappings"]
+    field_order = section_config["field_order"]
     
-    for idx, item in enumerate(output_array, 1):
+    for idx, item in enumerate(data_array, 1):
         formatted_text += f"{item_title_template.format(index=idx)}\n"
         formatted_text += f"{separator}\n"
         
@@ -77,6 +62,66 @@ def format_results(parsed_data: Dict, config: Dict[str, Any]) -> str:
         formatted_text += f"{separator}\n\n"
     
     return formatted_text
+
+def format_results_unified(parsed_data: Dict, config: Dict[str, Any]) -> str:
+    """统一格式化结果 - 支持单输出和多输出配置"""
+    all_formatted_text = ""
+    
+    if is_multi_output_config(config):
+        # 多输出配置
+        output_types = config["output_types"]
+        sections_found = 0
+        
+        for output_type, output_config in output_types.items():
+            if not output_config["enabled"]:
+                continue
+                
+            if output_type not in parsed_data:
+                print(f"⚠️ 数据中未找到字段 '{output_type}'，跳过")
+                continue
+            
+            data_array = parsed_data[output_type]
+            if not data_array:
+                print(f"⚠️ 字段 '{output_type}' 为空，跳过")
+                continue
+            
+            if sections_found > 0:
+                all_formatted_text += "\n" + "="*80 + "\n\n"
+            
+            formatted_section = format_single_section(data_array, output_config)
+            all_formatted_text += formatted_section
+            sections_found += 1
+            
+    else:
+        # 单输出配置
+        data_field = config["data_field"]
+        
+        if data_field not in parsed_data:
+            return f"未识别的数据格式，找不到字段 '{data_field}': {json.dumps(parsed_data, ensure_ascii=False, indent=2)}"
+        
+        data_array = parsed_data[data_field]
+        all_formatted_text = format_single_section(data_array, config)
+    
+    return all_formatted_text
+
+def get_file_header_template(config: Dict[str, Any]) -> str:
+    """获取文件头模板"""
+    if is_multi_output_config(config):
+        # 多输出配置 - 使用第一个启用的输出类型的模板
+        for output_type, output_config in config["output_types"].items():
+            if output_config["enabled"]:
+                return output_config["file_header_template"]
+        return "=== 处理结果 ===\n\n处理时间: {process_time}\n学生姓名: {folder_name}\n原始缓存: {cache_file}\n消息数量: {message_count}\n\n"
+    else:
+        # 单输出配置
+        return config["file_header_template"]
+
+def get_output_prefix(config: Dict[str, Any]) -> str:
+    """获取输出文件前缀"""
+    if is_multi_output_config(config):
+        return config["global_config"]["output_prefix"]
+    else:
+        return config["output_prefix"]
 
 def process_cache_file(cache_file_path: str, config: Dict[str, Any]) -> bool:
     """处理单个缓存文件"""
@@ -97,8 +142,8 @@ def process_cache_file(cache_file_path: str, config: Dict[str, Any]) -> bool:
         
         # 生成输出文件路径
         cache_dir = os.path.dirname(cache_file_path)
-        output_prefix = config.get("output_prefix", "格式化批改结果")
-        output_file = os.path.join(cache_dir, f"{output_prefix}_{folder_name}_{timestamp}.txt")
+        output_prefix = get_output_prefix(config)
+        output_file = os.path.join(cache_dir, f"{folder_name}_{output_prefix}_{timestamp}.txt")
         
         all_formatted_results = []
         
@@ -107,15 +152,16 @@ def process_cache_file(cache_file_path: str, config: Dict[str, Any]) -> bool:
             raw_content = msg_data.get("raw_content", "")
             
             # 提取并解析JSON
-            parsed_data = extract_json_from_content(raw_content, config)
+            content_pattern = config["content_pattern"]
+            parsed_data = extract_json_from_content(raw_content, content_pattern)
             if parsed_data:
-                formatted_result = format_results(parsed_data, config)
+                formatted_result = format_results_unified(parsed_data, config)
                 all_formatted_results.append(formatted_result)
         
-        # 写入格式化结果
+        # 写入格式化结果到单个文件
         with open(output_file, 'w', encoding='utf-8') as f:
             # 使用配置的文件头模板
-            header_template = config["file_header_template"]  # 直接使用配置，不提供默认值
+            header_template = get_file_header_template(config)
             header = header_template.format(
                 process_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 folder_name=folder_name,
@@ -142,7 +188,7 @@ def scan_and_process_cache_files(directory: str, config: Dict[str, Any]):
     print(f"🔍 扫描目录: {directory}")
     
     # 查找所有缓存文件
-    cache_pattern = os.path.join(directory, "**/raw_response_cache_*.json")
+    cache_pattern = os.path.join(directory, "**/*_response_cache_*.json")
     cache_files = glob.glob(cache_pattern, recursive=True)
     
     if not cache_files:
@@ -158,41 +204,51 @@ def scan_and_process_cache_files(directory: str, config: Dict[str, Any]):
     
     print(f"\n🎉 处理完成! 成功: {success_count}/{len(cache_files)}")
 
-def create_example_config(config_path: str):
-    """创建示例配置文件"""
-    example_config = {
-        "data_field": "output_arr_obj",
-        "content_pattern": r"content='(.+?)'(?:\s+node_title=|$)",
-        "title": "=== 批改结果 ===",
-        "summary_template": "一共读到 {count} 题",
-        "item_title_template": "【题 {index}】",
-        "separator": "=" * 50,
-        "field_mappings": {
-            "std_input": "学生翻译",
-            "thought": "思路",
-            "comment": "批改"
-        },
-        "field_order": ["std_input", "thought", "comment"],
-        "output_prefix": "格式化批改结果"
-    }
+def load_config() -> Dict[str, Any]:
+    """加载配置文件 - 自动检测配置类型"""
+    config_attempts = [
+        ("config.translation_rec_format_config", "MULTI_OUTPUT_FORMAT_CONFIG", "多输出格式配置"),
+        ("config.translation_format_config", "DEFAULT_FORMAT_CONFIG", "单输出格式配置")
+    ]
     
-    with open(config_path, 'w', encoding='utf-8') as f:
-        json.dump(example_config, f, ensure_ascii=False, indent=2)
+    for module_name, config_name, desc in config_attempts:
+        try:
+            module = __import__(module_name, fromlist=[config_name])
+            config = getattr(module, config_name)
+            print(f"✅ 已加载配置文件: {module_name}.py ({desc})")
+            return config
+        except (ImportError, AttributeError) as e:
+            print(f"⚠️ 尝试加载 {module_name} 失败: {str(e)}")
+            continue
     
-    print(f"✅ 已创建示例配置文件: {config_path}")
+    raise ImportError("无法加载任何配置文件。请确保存在以下配置文件之一：\n"
+                     "- config/translation_rec_format_config.py (多输出)\n"
+                     "- config/translation_format_config.py (单输出)")
 
 def main():
     """主函数"""
     print("=== 缓存文件后处理器 ===\n")
     
-    # 加载配置
-    config = load_format_config()
-    print(f"📋 数据字段: {config['data_field']}")
-    print(f"📋 字段映射: {config['field_mappings']}")
-    print(f"📋 字段顺序: {config['field_order']}\n")
+    # 加载格式化配置
+    try:
+        config = load_config()
+    except ImportError as e:
+        print(f"❌ 配置文件加载失败: {str(e)}")
+        return
+    
+    # 显示配置信息
+    if is_multi_output_config(config):
+        enabled_types = [k for k, v in config['output_types'].items() if v['enabled']]
+        print(f"📋 配置类型: 多输出格式")
+        print(f"📋 启用的输出类型: {enabled_types}")
+        print(f"📋 输出前缀: {config['global_config']['output_prefix']}\n")
+    else:
+        print(f"📋 配置类型: 单输出格式")
+        print(f"📋 数据字段: {config['data_field']}")
+        print(f"📋 输出前缀: {config['output_prefix']}\n")
     
     # 配置目录
-    test_directory = r"E:\真真英语\作文\test"
+    test_directory = r"E:\真真英语\作文\test\Translation_Unit"
     
     print(f"📂 测试目录: {test_directory}")
     

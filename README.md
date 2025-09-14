@@ -62,9 +62,9 @@ python essay_processor.py
 
 - **coze_workflow_client.py**: Main processor
 - **api_response_format.py**: Format API results into readable txt
-- **post_process.py**: post_process the txt file
+- **post_process/txt_to_image_converter.py**: post_process the txt file to images
 - **utils/compress_file.py**: Compress images to reduce upload time
-
+- **database/mistake_scanner.py**: count and summarize the mistakes
 ## Notes
 
 - Ensure Coze API is configured correctly

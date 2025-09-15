@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-简化版错误翻译扫描器 - 不依赖pandas
 扫描所有子文件夹中的JSON文件，提取flag为false的翻译错误数据
 """
 
@@ -61,6 +60,19 @@ class SimpleErrorScanner:
             print(f"尝试解析的内容片段: {content_str[:200]}...")
             return None
     
+    def clean_chinese_text(self, text):
+        """
+        清理中文原句，去掉开头的数字标号
+        例如: "73. 值得一提的是..." -> "值得一提的是..."
+        """
+        if not text:
+            return text
+        
+        # 匹配开头的数字标号模式，如 "73.", "1.", "123." 等
+        pattern = r'^\d+\.\s*'
+        cleaned_text = re.sub(pattern, '', text)
+        return cleaned_text.strip()
+    
     def process_json_file(self, json_file_path):
         """处理单个JSON文件"""
         try:
@@ -70,7 +82,7 @@ class SimpleErrorScanner:
             folder_name = data.get('folder_name', '')
             timestamp = data.get('timestamp', '')
             
-            file_errors = []
+            file_records = []
             
             for message in data.get('raw_messages', []):
                 raw_content = message.get('raw_content', '')
@@ -83,24 +95,28 @@ class SimpleErrorScanner:
                 
                 for idx, item in enumerate(usage_output, 1):
                     flag = item.get('flag', '')
-                    if flag == 'false':
-                        chinese_txt = item.get('chinese_txt', '')
-                        bracket_en_mistake = item.get('bracket_en_mistake', '')
-                        
-                        error_record = {
-                            'folder_name': folder_name,
-                            'timestamp': timestamp,
-                            'json_file': json_file_path.name,
-                            'sentence_index': idx,
-                            'chinese_txt': chinese_txt,
-                            'bracket_en_mistake': bracket_en_mistake,
-                            'flag': flag
-                        }
-                        
-                        file_errors.append(error_record)
-                        print(f"找到错误: {folder_name} - 句子{idx}: {chinese_txt[:30]}...")
+                    chinese_txt = item.get('chinese_txt', '')
+                    bracket_en_mistake = item.get('bracket_en_mistake', '')
+                    
+                    # 清理中文原句，去掉开头的数字标号
+                    cleaned_chinese_txt = self.clean_chinese_text(chinese_txt)
+                    
+                    record = {
+                        'folder_name': folder_name,
+                        'timestamp': timestamp,
+                        'json_file': json_file_path.name,
+                        'sentence_index': idx,
+                        'chinese_txt': cleaned_chinese_txt,
+                        'original_chinese_txt': chinese_txt,  # 保留原始文本用于调试
+                        'bracket_en_mistake': bracket_en_mistake,
+                        'flag': flag
+                    }
+                    
+                    file_records.append(record)
+                    status = "正确" if flag == 'true' else "错误"
+                    print(f"找到{status}: {folder_name} - 句子{idx}: {cleaned_chinese_txt[:30]}...")
             
-            return file_errors
+            return file_records
             
         except Exception as e:
             print(f"处理文件 {json_file_path} 时出错: {e}")
@@ -128,22 +144,23 @@ class SimpleErrorScanner:
             
             for json_file in json_files:
                 print(f"处理文件: {json_file.name}")
-                errors = self.process_json_file(json_file)
-                self.error_data.extend(errors)
+                records = self.process_json_file(json_file)
+                self.error_data.extend(records)
         
-        self.total_false_count = len(self.error_data)
-        print(f"扫描完成，共找到 {self.total_false_count} 个错误翻译")
+        self.total_false_count = len([r for r in self.error_data if r['flag'] == 'false'])
+        total_records = len(self.error_data)
+        print(f"扫描完成，共找到 {total_records} 个句子记录，其中 {self.total_false_count} 个错误翻译")
     
     def save_results(self):
         """保存结果"""
         if not self.error_data:
-            print("没有找到错误数据，跳过保存")
+            print("没有找到数据，跳过保存")
             return
         
         timestamp = datetime.now().strftime(self.config["global_config"]["timestamp_format"])
         
         # 使用配置的字段映射保存CSV
-        csv_file = self.base_dir / f"translation_errors_{timestamp}.csv"
+        csv_file = self.base_dir / f"translation_records_{timestamp}.csv"
         with open(csv_file, 'w', newline='', encoding='utf-8-sig') as f:
             # 使用配置中的中文字段名作为CSV头部
             fieldnames = [
@@ -157,56 +174,61 @@ class SimpleErrorScanner:
             writer.writeheader()
             
             # 转换数据行，使用中文字段名
-            for error in self.error_data:
+            for record in self.error_data:
                 row = {
-                    'folder_name': error['folder_name'],
-                    'timestamp': error['timestamp'],
-                    'json_file': error['json_file'],
-                    'sentence_index': error['sentence_index'],
-                    self.field_mappings['chinese_txt']: error['chinese_txt'],
-                    self.field_mappings['bracket_en_mistake']: error['bracket_en_mistake'],
-                    self.field_mappings['flag']: error['flag']
+                    'folder_name': record['folder_name'],
+                    'timestamp': record['timestamp'],
+                    'json_file': record['json_file'],
+                    'sentence_index': record['sentence_index'],
+                    self.field_mappings['chinese_txt']: record['chinese_txt'],
+                    self.field_mappings['bracket_en_mistake']: record['bracket_en_mistake'],
+                    self.field_mappings['flag']: record['flag']
                 }
                 writer.writerow(row)
         
         print(f"CSV文件已保存: {csv_file}")
         
         # 保存为文本格式，使用配置的字段映射
-        txt_file = self.base_dir / f"translation_errors_{timestamp}.txt"
+        txt_file = self.base_dir / f"translation_records_{timestamp}.txt"
         with open(txt_file, 'w', encoding='utf-8') as f:
             f.write("=" * 60 + "\n")
-            f.write("翻译错误分析报告\n")
+            f.write("翻译记录分析报告\n")
             f.write("=" * 60 + "\n")
             f.write(f"扫描时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"总错误数量: {self.total_false_count}\n")
+            total_records = len(self.error_data)
+            f.write(f"总记录数量: {total_records}\n")
+            f.write(f"错误数量: {self.total_false_count}\n")
+            f.write(f"正确数量: {total_records - self.total_false_count}\n")
             
             # 统计涉及的文件夹
-            folders = set(error['folder_name'] for error in self.error_data)
+            folders = set(record['folder_name'] for record in self.error_data)
             f.write(f"涉及文件夹数: {len(folders)}\n")
             f.write("\n" + "=" * 60 + "\n")
-            f.write("错误详情:\n")
+            f.write("记录详情:\n")
             f.write("=" * 60 + "\n\n")
             
-            for idx, error in enumerate(self.error_data, 1):
-                f.write(f"【错误 {idx}】\n")
-                f.write(f"文件夹: {error['folder_name']}\n")
-                f.write(f"时间戳: {error['timestamp']}\n")
-                f.write(f"句子序号: {error['sentence_index']}\n")
-                f.write(f"{self.field_mappings['chinese_txt']}: {error['chinese_txt']}\n")
-                f.write(f"{self.field_mappings['bracket_en_mistake']}: {error['bracket_en_mistake']}\n")
-                f.write(f"{self.field_mappings['flag']}: {error['flag']}\n")
+            for idx, record in enumerate(self.error_data, 1):
+                f.write(f"【记录 {idx}】\n")
+                f.write(f"文件夹: {record['folder_name']}\n")
+                f.write(f"时间戳: {record['timestamp']}\n")
+                f.write(f"句子序号: {record['sentence_index']}\n")
+                f.write(f"{self.field_mappings['chinese_txt']}: {record['chinese_txt']}\n")
+                f.write(f"{self.field_mappings['bracket_en_mistake']}: {record['bracket_en_mistake']}\n")
+                f.write(f"{self.field_mappings['flag']}: {record['flag']}\n")
                 f.write("-" * 40 + "\n\n")
         
         print(f"文本文件已保存: {txt_file}")
         
         # 保存为JSON
-        json_file = self.base_dir / f"translation_errors_{timestamp}.json"
+        json_file = self.base_dir / f"translation_records_{timestamp}.json"
         result_data = {
             'scan_time': datetime.now().isoformat(),
+            'total_records': len(self.error_data),
             'total_false_count': self.total_false_count,
+            'total_true_count': len(self.error_data) - self.total_false_count,
             'total_folders': len(folders),
             'field_mappings': self.field_mappings,  # 添加字段映射信息
-            'error_details': self.error_data
+            'record_details': self.error_data
         }
         with open(json_file, 'w', encoding='utf-8') as f:
             json.dump(result_data, f, ensure_ascii=False, indent=2)
@@ -216,34 +238,53 @@ class SimpleErrorScanner:
     def print_report(self):
         """打印分析报告"""
         if not self.error_data:
-            print("没有找到错误数据")
+            print("没有找到数据")
             return
         
+        total_records = len(self.error_data)
+        total_true_count = total_records - self.total_false_count
+        
         print("\n" + "=" * 60)
-        print("翻译错误分析报告")
+        print("翻译记录分析报告")
         print("=" * 60)
         print(f"扫描时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"总错误数量: {self.total_false_count}")
+        print(f"总记录数量: {total_records}")
+        print(f"正确数量: {total_true_count}")
+        print(f"错误数量: {self.total_false_count}")
+        if total_records > 0:
+            print(f"正确率: {total_true_count/total_records*100:.1f}%")
         
         # 统计涉及的文件夹
         folders = {}
-        for error in self.error_data:
-            folder = error['folder_name']
+        folder_stats = {}
+        for record in self.error_data:
+            folder = record['folder_name']
             folders[folder] = folders.get(folder, 0) + 1
+            
+            if folder not in folder_stats:
+                folder_stats[folder] = {'total': 0, 'correct': 0, 'error': 0}
+            folder_stats[folder]['total'] += 1
+            if record['flag'] == 'true':
+                folder_stats[folder]['correct'] += 1
+            else:
+                folder_stats[folder]['error'] += 1
         
         print(f"涉及文件夹数: {len(folders)}")
         
         # 按文件夹统计
-        print(f"\n按文件夹错误统计:")
-        for folder, count in sorted(folders.items()):
-            print(f"  {folder}: {count} 个错误")
+        print(f"\n按文件夹统计:")
+        for folder in sorted(folder_stats.keys()):
+            stats = folder_stats[folder]
+            accuracy = stats['correct'] / stats['total'] * 100 if stats['total'] > 0 else 0
+            print(f"  {folder}: 总计{stats['total']}句, 正确{stats['correct']}句, 错误{stats['error']}句 (正确率: {accuracy:.1f}%)")
         
         # 错误表达统计，使用配置的字段名
         mistakes = {}
-        for error in self.error_data:
-            mistake = error['bracket_en_mistake']
-            if mistake:  # 只统计非空的错误表达
-                mistakes[mistake] = mistakes.get(mistake, 0) + 1
+        for record in self.error_data:
+            if record['flag'] == 'false':  # 只统计错误的
+                mistake = record['bracket_en_mistake']
+                if mistake:  # 只统计非空的错误表达
+                    mistakes[mistake] = mistakes.get(mistake, 0) + 1
         
         if mistakes:
             print(f"\n常见{self.field_mappings['bracket_en_mistake']}统计:")
@@ -254,7 +295,7 @@ class SimpleErrorScanner:
 
 def main():
     """主函数"""
-    base_dir = r"E:\真真英语\作文\test\Translation_Test"
+    base_dir = r"E:\真真英语\作文\test\作业内容_翻译_Download_1_50"
     
     scanner = SimpleErrorScanner(base_dir)
     scanner.scan_all_folders()

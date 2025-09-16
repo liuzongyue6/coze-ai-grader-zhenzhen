@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-扫描所有子文件夹中的JSON文件，提取flag为false的翻译错误数据
+扫描所有子文件夹中的JSON文件，提取翻译数据
 """
 
 import os
@@ -295,7 +295,7 @@ class SimpleErrorScanner:
 
 def main():
     """主函数"""
-    base_dir = r"E:\真真英语\作文\test\作业内容_翻译_Download_1_50"
+    base_dir = r"E:\zhenzhen_eng_coze\example\翻译\作业内容_翻译_Download_1_50"
     
     scanner = SimpleErrorScanner(base_dir)
     scanner.scan_all_folders()

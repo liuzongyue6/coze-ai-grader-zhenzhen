@@ -283,9 +283,10 @@ class GroupedMistakeReporter:
                     for mistake, count in sorted(mistakes.items(), key=lambda x: x[1], reverse=True):
                         f.write(f"  - '{mistake}': {count} 次\n")
                 
-                # 涉及学生
-                students = list(set([r['folder_name'] for r in records]))
-                f.write(f"涉及学生 ({len(students)} 人): {', '.join(students)}\n")
+                
+                # 涉及学生 - 只显示翻译错误的学生
+                error_students = list(set([r['folder_name'] for r in records if r['flag'] == 'false']))
+                f.write(f"涉及学生 ({len(error_students)} 人): {', '.join(error_students)}\n")
                 f.write("-" * 60 + "\n\n")
     
     def generate_summary_report(self, summary_file):
@@ -369,7 +370,7 @@ class GroupedMistakeReporter:
 
 def main():
     """主函数"""
-    base_dir = r"E:\真真英语\作文\test\作业内容_翻译_Download_1_50"
+    base_dir = r"E:\zhenzhen_eng_coze\example\翻译\作业内容_翻译_Download_1_50"
     
     print("🔍 开始生成分组错误报告...")
     

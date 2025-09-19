@@ -13,7 +13,7 @@ from typing import List, Tuple, Optional
 class TextToImageConverter:
     def __init__(self, 
                  image_width: int = 1200, 
-                 image_height: int = 1600,
+                 image_height: int = 4000,  # 增加高度从1600到2400
                  margin: int = 80,
                  line_spacing: int = 8,
                  supported_fields: list = None):
@@ -409,9 +409,12 @@ class TextToImageConverter:
             
             # 绘制各个章节
             for section in report_data['sections']:
-                # 检查是否需要分页（简单检查）
+                # 检查是否需要分页
                 if current_y > self.image_height - 200:
-                    break
+                    # 可以在这里实现多页逻辑，或者继续处理但警告内容可能被截断
+                    print(f"  警告: 内容可能超出图片范围，建议增加图片高度或实现分页功能")
+                    # 暂时移除break，让所有内容都能处理
+                    # break
                 
                 # 章节标题
                 section_title = f"【{section['title']}】"
@@ -426,7 +429,9 @@ class TextToImageConverter:
                 
                 for line in content_lines:
                     if current_y > self.image_height - 100:
-                        break
+                        print(f"  警告: 第{len([s for s in report_data['sections'] if s == section]) + 1}节内容可能被截断")
+                        # break  # 注释掉这行，继续处理
+                        break # 确保在图片高度限制下停止
                     
                     # 处理特殊格式
                     if line.startswith('**') and line.endswith(':**'):
@@ -506,7 +511,7 @@ def main():
     
     # 获取用户输入的源文件夹路径
 
-    source_folder = r"E:\真真英语\作文\test\Translation_Unit"
+    source_folder = r"E:\zhenzhen_eng_coze\example\高一第2周翻译作业_reduced"
     
     print(f"\n配置信息:")
     print(f"处理文件夹: {source_folder}")

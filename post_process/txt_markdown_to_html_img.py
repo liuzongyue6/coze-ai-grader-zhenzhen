@@ -1,6 +1,20 @@
 """
-使用html2image方案将markdown格式的txt文件转换为图片
-支持完整的markdown语法渲染
+Markdown转图片高级工具 - markdown_to_image_html.py
+
+功能说明：
+- 使用html2image库将markdown转换为高质量图片
+- 支持完整的markdown语法渲染（表格、代码块、引用等）
+- 提供丰富的CSS样式和排版效果
+- 自动处理特殊格式的批改报告
+
+特点：
+- 完整markdown语法支持
+- 专业的CSS样式设计
+- 自动内容高度计算
+- 支持自定义样式和布局
+
+输入：markdown格式的txt文件
+输出：高质量PNG图片
 """
 import os
 import markdown

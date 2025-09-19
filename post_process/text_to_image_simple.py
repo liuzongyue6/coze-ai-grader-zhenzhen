@@ -1,6 +1,20 @@
 """
-对txt内容（markdown格式）通过html2image的方案转换成图片
-直接使用txt对应的键值对
+简单文本转图片工具 - text_to_image_simple.py
+
+功能说明：
+- 使用PIL库直接将markdown格式文本转换为图片
+- 支持中文字体自动检测和加载
+- 智能文本换行和排版
+- 简单轻量的图片生成方案
+
+特点：
+- 不依赖浏览器引擎，处理速度快
+- 支持基础的markdown格式（标题、键值对等）
+- 自动适应内容长度调整图片高度
+- 适合简单格式的批改报告
+
+输入：markdown格式的txt文件
+输出：PNG格式图片
 """
 from PIL import Image, ImageDraw, ImageFont
 import os

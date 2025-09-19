@@ -1,8 +1,19 @@
 """
-后处理缓存文件 - 解析原始API响应生成的json
-根据键值对的关系生成对应txt内容（markdown格式）
-难度：解决层层嵌套的markdown
-参考test里的文件如何解套多层嵌套json
+API响应JSON解析器 - api_response_to_markdown.py
+
+功能说明：
+- 解析Coze API返回的原始JSON响应文件
+- 提取嵌套的批改内容（处理转义字符和多层JSON结构）
+- 将提取的内容转换为markdown格式的txt文件
+- 支持批量处理目录下的所有JSON文件
+
+主要用途：
+- 处理作文/翻译批改的API响应
+- 解套复杂的JSON嵌套结构
+- 生成便于阅读的markdown格式批改结果
+
+输入：原始API响应JSON文件
+输出：结构化的markdown格式txt文件
 """
 import json
 import os

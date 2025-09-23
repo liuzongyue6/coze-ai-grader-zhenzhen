@@ -20,6 +20,32 @@ import os
 import re
 from typing import Any, Dict, List
 
+# 字段映射字典 - 将英文字段名映射为中文标题
+FIELD_NAME_MAPPING = {
+    "folder_name": "学生姓名",
+    "timestamp": "批改时间", 
+    "total_messages": "批改份数",
+    "grade": "总分",
+    "grade_comment": "点评",
+    "message_index": "序号",
+    "grammer_comment": "语法",
+    "sentence_comment": "句子",
+    "sentence_highlight": "亮眼句子",
+    "sentence_improve": "词句润色",
+    "structure_comment": "语法结构",
+    "word_comment": "用词",
+    "hand_writing": "手写",
+    "pnt_view": "你用到的观点",
+    "rewrite_output": "根据你的观点，文章重构"
+
+}
+
+def get_display_name(field_name: str) -> str:
+    """
+    获取字段的显示名称，如果有映射则使用中文，否则使用原字段名
+    """
+    return FIELD_NAME_MAPPING.get(field_name, field_name)
+
 def extract_json_from_raw_content(raw_content: str):
     """
     从raw_content字符串中提取JSON内容 - 最终修复版
@@ -101,7 +127,7 @@ def parse_json_by_position(json_file_path: str):
             # 特殊处理 raw_messages 数组
             if isinstance(value, list):
                 for i, message in enumerate(value):
-                    result.append(f"\n消息 {i+1}:")
+                  
                     
                     if isinstance(message, dict):
                         for msg_key, msg_value in message.items():
@@ -115,20 +141,23 @@ def parse_json_by_position(json_file_path: str):
                                     leaf_pairs = find_all_leaf_key_values(embedded_json)
                                     
                                     for leaf_key, leaf_value in leaf_pairs:
-                                        result.append(f"**{leaf_key}**")
+                                        display_name = get_display_name(leaf_key)
+                                        result.append(f"**{display_name}**")
                                         result.append(f"*{str(leaf_value)}*")
                                         result.append("")  # 空行
                                         result.append("")  # 第二个空行
                                 else:
                                     # JSON解析失败，作为普通字符串处理
-                                    result.append(f"**{msg_key}**")
+                                    display_name = get_display_name(msg_key)
+                                    result.append(f"**{display_name}**")
                                     result.append(f"*{str(msg_value)}*")
                                     result.append("")
                                     result.append("")
                             
                             else:
                                 # 其他字段直接输出
-                                result.append(f"**{msg_key}**")
+                                display_name = get_display_name(msg_key)
+                                result.append(f"**{display_name}**")
                                 result.append(f"*{str(msg_value)}*")
                                 result.append("")
                                 result.append("")
@@ -136,7 +165,8 @@ def parse_json_by_position(json_file_path: str):
                     result.append("")  # 消息间分隔
         else:
             # 其他顶级字段直接输出
-            result.append(f"**{key}**")
+            display_name = get_display_name(key)
+            result.append(f"**{display_name}**")
             result.append(f"*{str(value)}*")
             result.append("")
             result.append("")
@@ -181,7 +211,7 @@ def parse_and_save_json_files(directory_path: str):
 if __name__ == "__main__":
   
     # 批量处理
-    directory = r"E:\zhenzhen_eng_coze\example\高三第二周作文_reduced"
+    directory = r"E:\zhenzhen_eng_coze\example\高三第三周作文_reduced_example"
     
     if os.path.exists(directory):
         print(f"\n批量处理目录: {directory}")

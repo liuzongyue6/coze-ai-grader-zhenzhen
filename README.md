@@ -12,13 +12,13 @@
 
 ## Project Structure
 ```
-├── essay_processor.py              # Main processor - calls Coze API
-├── post_process_cache.py           # Post-processing - handles Coze API JSON response
+├── coze_workflow_client.py          # Main processor - calls Coze API
 ├── config/
 │   └── config.example.json         # Configuration file (API keys required)
 ├── post_process/                   # Post-processing tools
-│   ├── txt_result_orgnize.py   
-│   └── txt_to_image_converter.py
+│   ├── json_to_markdown.py         # general paser, from json to makrdown, for single instance
+│   ├── json_to_markdown_trans.py   # specific paser, for translation
+│   └── txt_markdown_to_html_img.py # transfer txt markdown to image
 ├── utils/
 │   └── compress_file.py            # Image compression tool
 └── test/                           # Test folder

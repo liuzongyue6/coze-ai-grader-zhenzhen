@@ -18,7 +18,7 @@ API响应JSON解析器 - api_response_to_markdown.py
 import json
 import os
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 # 字段映射字典 - 将英文字段名映射为中文标题
 FIELD_NAME_MAPPING = {
@@ -37,8 +37,21 @@ FIELD_NAME_MAPPING = {
     "hand_writing": "手写",
     "pnt_view": "你用到的观点",
     "rewrite_output": "根据你的观点，文章重构"
-
 }
+
+# 字段输出顺序 - 按照这个顺序输出字段
+FIELD_OUTPUT_ORDER = [
+    "folder_name",       # 学生姓名
+    "timestamp",         # 批改时间
+    "total_messages",    # 批改份数
+    "message_index",     # 序号
+    "hand_writing",      # 手写
+    "word_comment",      # 用词
+    "grammer_comment",   # 语法
+    "structure_comment", # 语法结构
+    "rewrite_output",    # 根据你的观点，文章重构
+    "timestamp"          # 批改时间（最后）
+]
 
 def get_display_name(field_name: str) -> str:
     """
@@ -111,6 +124,32 @@ def find_all_leaf_key_values(obj):
     
     return leaf_pairs
 
+def output_fields_in_order(leaf_pairs: List[Tuple[str, Any]], result: List[str]):
+    """
+    按照指定顺序输出字段
+    """
+    # 将叶子节点转换为字典，便于查找
+    fields_dict = dict(leaf_pairs)
+    
+    # 按照 FIELD_OUTPUT_ORDER 的顺序输出已定义的字段
+    for field_name in FIELD_OUTPUT_ORDER:
+        if field_name in fields_dict:
+            display_name = get_display_name(field_name)
+            result.append(f"**{display_name}**")
+            result.append(f"*{str(fields_dict[field_name])}*")
+            result.append("")  # 空行
+            result.append("")  # 第二个空行
+            # 从字典中移除已处理的字段
+            del fields_dict[field_name]
+    
+    # 输出剩余的未在顺序列表中定义的字段
+    for field_name, field_value in fields_dict.items():
+        display_name = get_display_name(field_name)
+        result.append(f"**{display_name}**")
+        result.append(f"*{str(field_value)}*")
+        result.append("")  # 空行
+        result.append("")  # 第二个空行
+
 def parse_json_by_position(json_file_path: str):
     """
     解析JSON文件，提取所有最底层的键值对
@@ -137,15 +176,9 @@ def parse_json_by_position(json_file_path: str):
                                 embedded_json = extract_json_from_raw_content(msg_value)
                                 
                                 if embedded_json:
-                                    # 找到所有叶子节点并输出
+                                    # 找到所有叶子节点并按顺序输出
                                     leaf_pairs = find_all_leaf_key_values(embedded_json)
-                                    
-                                    for leaf_key, leaf_value in leaf_pairs:
-                                        display_name = get_display_name(leaf_key)
-                                        result.append(f"**{display_name}**")
-                                        result.append(f"*{str(leaf_value)}*")
-                                        result.append("")  # 空行
-                                        result.append("")  # 第二个空行
+                                    output_fields_in_order(leaf_pairs, result)
                                 else:
                                     # JSON解析失败，作为普通字符串处理
                                     display_name = get_display_name(msg_key)

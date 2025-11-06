@@ -25,9 +25,12 @@ wheels/
 
 # 工作文件夹
 WIP/
-test/
+example/
 Archive/
 
 # 临时文件
 *.tmp
 *.log
+config/config.essay.json
+config/config.summary.json
+config/config.translation.json

@@ -126,7 +126,7 @@ def main():
     # 配置参数 - 用户可以在这里修改
     source_folder = input("请输入源文件夹路径 (或直接回车使用默认): ").strip()
     if not source_folder:
-        source_folder = r"test"
+        source_folder = r"E:\zhenzhen_eng_coze\example\高三第二周作业_Size_Reduced"
     
     # 创建目标文件夹名称（原文件夹_reduced）
     source_folder_name = os.path.basename(source_folder.rstrip(os.sep))
@@ -134,15 +134,15 @@ def main():
     target_folder = os.path.join(parent_dir, f"{source_folder_name}_reduced")
     
     # 获取目标大小
-    target_size_input = input("请输入目标大小(MB) (或直接回车使用默认0.5MB): ").strip()
+    target_size_input = input("请输入目标大小(MB) (或直接回车使用默认0.2MB): ").strip()
     if target_size_input:
         try:
             target_size_mb = float(target_size_input)
         except ValueError:
-            print("无效的数字，使用默认值0.5MB")
-            target_size_mb = 0.5
+            print("无效的数字，使用默认值0.2MB")
+            target_size_mb = 0.2
     else:
-        target_size_mb = 0.5
+        target_size_mb = 0.2
     
     target_size_bytes = int(target_size_mb * 1024 * 1024)
     supported_formats = ('.png', '.jpg', '.jpeg', '.bmp', '.gif')

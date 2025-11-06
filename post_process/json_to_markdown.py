@@ -61,7 +61,7 @@ def get_display_name(field_name: str) -> str:
 
 def extract_json_from_raw_content(raw_content: str):
     """
-    从raw_content字符串中提取JSON内容 - 最终修复版
+    从raw_content字符串中提取JSON内容
     """
     # 查找 content=' 开始位置
     start_marker = "content='"
@@ -244,7 +244,7 @@ def parse_and_save_json_files(directory_path: str):
 if __name__ == "__main__":
   
     # 批量处理
-    directory = r"E:\zhenzhen_eng_coze\example\高三第三周作文_reduced_example"
+    directory = r"E:\zhenzhen_eng_coze\example\高一_翻译_10_4_reduced_example"
     
     if os.path.exists(directory):
         print(f"\n批量处理目录: {directory}")

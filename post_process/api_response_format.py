@@ -1,4 +1,5 @@
 """
+通用的api处理器
 后处理缓存文件 - 解析原始API响应并生成格式化的批改结果
 支持单输出和多输出格式配置
 """
@@ -248,7 +249,7 @@ def main():
         print(f"📋 输出前缀: {config['output_prefix']}\n")
     
     # 配置目录
-    test_directory = r"E:\真真英语\作文\test\Translation_Unit"
+    test_directory = r"E:\zhenzhen_eng_coze\example\高三第3周作文_补_reduced"
     
     print(f"📂 测试目录: {test_directory}")
     

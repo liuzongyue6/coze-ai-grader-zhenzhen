@@ -6,14 +6,49 @@ from pathlib import Path
 from typing import List, Dict, Set, Optional, Any, Tuple
 from dataclasses import dataclass
 from datetime import datetime
+import matplotlib.pyplot as plt
+import matplotlib
+from matplotlib.patches import Rectangle
+
+# Configure matplotlib for Chinese characters
+matplotlib.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'Arial Unicode MS']
+matplotlib.rcParams['axes.unicode_minus'] = False
+
+"""
+==========================================
+学生翻译错误分析工具
+==========================================
+
+功能说明：
+1. 解析学生翻译作业的JSON日志文件
+2. 提取标记为"翻得不好"的错误
+3. 生成错误统计报告
+4. 导出两个JSON文件：
+   - 1_student_mistakes.json: 按中文句子分组的学生错误
+   - 2_statistics_summary.json: 每个句子的统计摘要
+5. 生成可视化图表：
+   - mistake_rate_pie_charts.png: 每句话的错误率饼图
+   - student_mistakes_visual.png: 学生错误详细列表图
+
+使用方法：
+1. 设置 ROOT_DIRECTORY 为包含所有学生文件夹的根目录
+2. 设置 BASELINE_FOLDER 为基准学生的文件夹名称（用于提取题目）
+3. 运行脚本，自动生成所有报告和图表
+
+输出文件：
+- 1_student_mistakes.json: 学生错误详情
+- 2_statistics_summary.json: 统计摘要
+- mistake_rate_pie_charts.png: 错误率饼图
+- student_mistakes_visual.png: 错误详情可视化图
+"""
 
 # ==========================================
-# DATA MODELS (For Better Type Safety)
+# 数据模型 (用于类型安全)
 # ==========================================
 
 @dataclass
 class MistakeEntry:
-    """Data model for a single mistake entry."""
+    """单个错误条目的数据模型"""
     chinese_txt: str
     mistake: str
     mistake_flag: str
@@ -23,7 +58,7 @@ class MistakeEntry:
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'MistakeEntry':
-        """Create MistakeEntry from dictionary."""
+        """从字典创建 MistakeEntry 对象"""
         return cls(
             chinese_txt=data.get('chinese_txt', ''),
             mistake=data.get('mistake', ''),
@@ -35,7 +70,7 @@ class MistakeEntry:
 
 @dataclass
 class StudentMistake:
-    """Data model for student-specific mistake."""
+    """学生特定错误的数据模型"""
     student_name: str
     mistake: str
     comment: str
@@ -43,93 +78,72 @@ class StudentMistake:
     file_path: str
 
 # ==========================================
-# LAYER 1: File I/O & Parsing (Low-Level)
+# 第一层: 文件读写与解析 (底层)
 # ==========================================
 
 def parse_log_content(file_path: Path) -> Optional[List[Dict[str, Any]]]:
     """
-    Parses a log file to extract and load the inner JSON data.
-    Handles escaped quotes and apostrophes properly.
+    解析日志文件，提取并加载内部JSON数据
+    正确处理转义的引号和撇号
     
-    Args:
-        file_path: Path to the JSON log file
+    参数：
+        file_path: 日志文件路径
         
-    Returns:
-        List of dictionaries containing output_arr_obj data, or None if parsing fails
+    返回：
+        解析后的JSON数据列表，失败则返回None
     """
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             raw_content = f.read()
         
-        # First, load the outer JSON structure
+        # 首先加载外层JSON结构
         outer_data = json.loads(raw_content)
         
-        # Navigate to the raw_content field
+        # 导航到 raw_content 字段
         if 'raw_messages' not in outer_data or len(outer_data['raw_messages']) == 0:
-            print(f"Warning: No raw_messages found in {file_path}")
             return None
         
         raw_message = outer_data['raw_messages'][0]['raw_content']
         
-        # Extract the content='...' part using regex
+        # 使用正则表达式提取 content='...' 部分
         match = re.search(r"content='(\{.*\})'", raw_message, re.DOTALL)
         if not match:
-            print(f"Warning: No valid 'content={{...}}' format found in {file_path}")
             return None
         
         json_string = match.group(1)
         
-        # The key fix: use decode with 'unicode_escape' for the escape sequences
-        # But we need to be careful with Chinese characters
-        # Instead, let's use a different approach: replace the escape sequences correctly
-        
-        # Replace the problematic escape sequences
-        # The string has \' which is not valid in JSON (JSON only recognizes \")
+        # 替换有问题的转义序列
         cleaned_string = json_string.replace("\\'", "'")
         
-        # Parse the cleaned JSON
+        # 解析清理后的JSON
         data = json.loads(cleaned_string)
         
         return data.get("output_arr_obj")
 
     except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON in file: {file_path}")
-        print(f"       Parser failed with message: {e}")
-        # Debug: show the problematic part
-        try:
-            if 'json_string' in locals():
-                error_pos = e.pos if hasattr(e, 'pos') else 0
-                snippet_start = max(0, error_pos - 50)
-                snippet_end = min(len(json_string), error_pos + 50)
-                print(f"       Near position {error_pos}:")
-                print(f"       ...{json_string[snippet_start:snippet_end]}...")
-        except:
-            pass
+        print(f"⚠ JSON解析错误: {file_path.name}")
         return None
     except FileNotFoundError:
-        print(f"Error: File not found: {file_path}")
+        print(f"⚠ 文件未找到: {file_path}")
         return None
     except Exception as e:
-        print(f"An unexpected error occurred while processing {file_path}: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    return None
+        print(f"⚠ 处理文件时出错 {file_path.name}: {e}")
+        return None
 
 def find_json_files(root_folder: Path) -> List[Path]:
     """
-    Recursively finds all .json files in the given folder.
+    递归查找给定文件夹中的所有.json文件
     
-    Args:
-        root_folder: Root directory to search
+    参数：
+        root_folder: 要搜索的根目录
         
-    Returns:
-        List of Path objects pointing to JSON files
+    返回：
+        指向JSON文件的Path对象列表
     """
     return list(root_folder.rglob("*.json"))
 
 # ==========================================
-# LAYER 2: Data Extraction (Business Logic)
+# 第二层: 数据提取 (业务逻辑)
 # ==========================================
 
 def extract_mistakes_from_data(
@@ -137,14 +151,14 @@ def extract_mistakes_from_data(
     target_flag: str = "翻得不好"
 ) -> List[MistakeEntry]:
     """
-    Extracts mistakes where the flag matches the target.
+    提取标志匹配目标的错误
     
-    Args:
-        parsed_data: Parsed JSON data from log file
-        target_flag: Mistake flag to filter (default: "翻得不好")
+    参数：
+        parsed_data: 从日志文件解析的JSON数据
+        target_flag: 要过滤的错误标志（默认："翻得不好"）
         
-    Returns:
-        List of MistakeEntry objects matching the target flag
+    返回：
+        匹配目标标志的 MistakeEntry 对象列表
     """
     mistakes = []
     if not parsed_data:
@@ -155,19 +169,19 @@ def extract_mistakes_from_data(
             try:
                 mistakes.append(MistakeEntry.from_dict(item))
             except Exception as e:
-                print(f"Warning: Failed to parse mistake entry: {e}")
+                print(f"警告: 解析错误条目失败: {e}")
     
     return mistakes
 
 def extract_all_chinese_sentences(parsed_data: List[Dict[str, Any]]) -> Set[str]:
     """
-    Extracts all unique Chinese sentences from parsed data.
+    从解析的数据中提取所有唯一的中文句子
     
-    Args:
-        parsed_data: Parsed JSON data from log file
+    参数：
+        parsed_data: 从日志文件解析的JSON数据
         
-    Returns:
-        Set of unique Chinese sentences
+    返回：
+        唯一中文句子的集合
     """
     sentences = set()
     if not parsed_data:
@@ -181,38 +195,34 @@ def extract_all_chinese_sentences(parsed_data: List[Dict[str, Any]]) -> Set[str]
     return sentences
 
 # ==========================================
-# LAYER 3: Baseline Management
+# 第三层: 基准管理
 # ==========================================
 
 def establish_baseline_sentences(baseline_folder_path: Path) -> Set[str]:
     """
-    Extracts unique Chinese sentences from the baseline folder.
-    This creates a reference set for matching other students' work.
+    从基准文件夹中提取唯一的中文句子
+    这将创建一个参考集，用于匹配其他学生的作业
     
-    Args:
-        baseline_folder_path: Path to the baseline folder (1st student folder)
+    参数：
+        baseline_folder_path: 基准文件夹的路径（第一个学生文件夹）
         
-    Returns:
-        Set of unique Chinese sentences that serve as the baseline
+    返回：
+        作为基准的唯一中文句子集合
     """
     baseline_sentences = set()
     json_files = find_json_files(baseline_folder_path)
-    
-    print(f"Processing baseline folder: {baseline_folder_path.name}")
-    print(f"Found {len(json_files)} JSON file(s)")
     
     for file_path in json_files:
         parsed_data = parse_log_content(file_path)
         if parsed_data:
             sentences = extract_all_chinese_sentences(parsed_data)
             baseline_sentences.update(sentences)
-            print(f"  - Extracted {len(sentences)} sentences from {file_path.name}")
     
-    print(f"✓ Established baseline with {len(baseline_sentences)} unique sentences.\n")
+    print(f"✓ 基准已建立: 从 {baseline_folder_path.name} 提取了 {len(baseline_sentences)} 个句子")
     return baseline_sentences
 
 # ==========================================
-# LAYER 4: Mistake Summary & Statistics
+# 第四层: 错误汇总与统计
 # ==========================================
 
 def summarize_student_mistakes(
@@ -220,43 +230,43 @@ def summarize_student_mistakes(
     baseline_folder_name: str
 ) -> Tuple[Dict[str, List[StudentMistake]], Set[str]]:
     """
-    Orchestrates the process of finding, matching, and summarizing mistakes.
+    协调查找、匹配和汇总错误的过程
     
-    Args:
-        root_directory: Root path containing all student folders
-        baseline_folder_name: Name of the folder to use as baseline
+    参数：
+        root_directory: 包含所有学生文件夹的根路径
+        baseline_folder_name: 用作基准的文件夹名称
         
-    Returns:
-        Tuple of (mistake_summary, baseline_sentences)
-        - mistake_summary: Dict mapping chinese_txt to list of StudentMistake objects
-        - baseline_sentences: Set of baseline Chinese sentences
+    返回：
+        元组 (mistake_summary, baseline_sentences)
+        - mistake_summary: 将 chinese_txt 映射到 StudentMistake 对象列表的字典
+        - baseline_sentences: 基准中文句子集合
     """
     root_path = Path(root_directory)
     baseline_path = root_path / baseline_folder_name
     
-    # Validate baseline folder exists
+    # 验证基准文件夹是否存在
     if not baseline_path.is_dir():
         raise FileNotFoundError(
-            f"Baseline folder '{baseline_folder_name}' not found in '{root_directory}'"
+            f"基准文件夹 '{baseline_folder_name}' 未在 '{root_directory}' 中找到"
         )
 
-    # Step 1: Establish baseline from 1st folder
+    # 步骤1: 从第一个文件夹建立基准
     baseline_sentences = establish_baseline_sentences(baseline_path)
     
-    # Step 2: Process all student folders
+    # 步骤2: 处理所有学生文件夹
     mistake_summary = defaultdict(list)
+    student_count = 0
     
     for student_folder_path in sorted(root_path.iterdir()):
-        # Skip non-directories and baseline folder
+        # 跳过非目录和基准文件夹
         if not student_folder_path.is_dir():
             continue
             
         student_name = student_folder_path.name
-        print(f"Processing student: {student_name}...")
+        student_count += 1
         
-        # Find and process all JSON files for this student
+        # 查找并处理该学生的所有JSON文件
         student_json_files = find_json_files(student_folder_path)
-        print(f"  - Found {len(student_json_files)} JSON file(s)")
         
         mistakes_count = 0
         for file_path in student_json_files:
@@ -266,7 +276,7 @@ def summarize_student_mistakes(
             for mistake_entry in mistakes_found:
                 sentence = mistake_entry.chinese_txt.strip()
                 
-                # Only record if sentence is in baseline
+                # 只记录在基准中的句子
                 if sentence in baseline_sentences:
                     mistake_summary[sentence].append(StudentMistake(
                         student_name=student_name,
@@ -276,33 +286,25 @@ def summarize_student_mistakes(
                         file_path=str(file_path.name)
                     ))
                     mistakes_count += 1
-                else:
-                    print(f"  ⚠ Warning: Sentence not in baseline: '{sentence[:40]}...'")
-        
-        print(f"  ✓ Recorded {mistakes_count} mistake(s)\n")
-
+    
+    print(f"✓ 已处理 {student_count} 名学生")
     return dict(mistake_summary), baseline_sentences
 
 # ==========================================
-# LAYER 5: Statistics & Reporting
+# 第五层: 统计与报告
 # ==========================================
 
 def generate_statistics_report(
     mistake_summary: Dict[str, List[StudentMistake]]
 ) -> Dict[str, Any]:
     """
-    Generates comprehensive statistics from the mistake summary.
+    从错误汇总中生成综合统计信息
     
-    Args:
-        mistake_summary: Dictionary mapping chinese_txt to student mistakes
+    参数：
+        mistake_summary: 将 chinese_txt 映射到学生错误的字典
         
-    Returns:
-        Dictionary containing various statistics:
-        - total_unique_sentences: Number of unique sentences with mistakes
-        - total_mistake_instances: Total count of all mistake occurrences
-        - mistakes_per_student: Count of mistakes for each student
-        - sentences_with_most_mistakes: Sentences sorted by frequency
-        - mistake_rate: Percentage of sentences with mistakes
+    返回：
+        包含各种统计信息的字典
     """
     stats = {
         "total_unique_sentences": len(mistake_summary),
@@ -312,13 +314,13 @@ def generate_statistics_report(
         "students_processed": set()
     }
     
-    # Count mistakes per student
+    # 统计每个学生的错误数量
     for sentence, student_mistakes in mistake_summary.items():
         for student_mistake in student_mistakes:
             stats["mistakes_per_student"][student_mistake.student_name] += 1
             stats["students_processed"].add(student_mistake.student_name)
     
-    # Sort sentences by mistake frequency
+    # 按错误频率排序句子
     sentence_freq = [
         (sentence, len(students)) 
         for sentence, students in mistake_summary.items()
@@ -329,7 +331,7 @@ def generate_statistics_report(
         reverse=True
     )
     
-    # Convert set to count
+    # 将集合转换为计数
     stats["total_students"] = len(stats["students_processed"])
     del stats["students_processed"]
     
@@ -341,12 +343,12 @@ def export_summary_to_json(
     include_metadata: bool = True
 ) -> None:
     """
-    Exports mistake summary to a JSON file.
+    将错误汇总导出到JSON文件
     
-    Args:
-        mistake_summary: Dictionary of mistakes to export
-        output_path: Path to save the JSON file
-        include_metadata: Whether to include metadata like timestamp
+    参数：
+        mistake_summary: 要导出的错误字典
+        output_path: 保存JSON文件的路径
+        include_metadata: 是否包含时间戳等元数据
     """
     export_data = {}
     
@@ -374,7 +376,7 @@ def export_summary_to_json(
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(export_data, f, ensure_ascii=False, indent=2)
     
-    print(f"✓ Exported summary to: {output_path}")
+    print(f"✓ 已导出汇总到: {output_path}")
 
 def export_student_mistakes_json(
     mistake_summary: Dict[str, List[StudentMistake]], 
@@ -382,9 +384,9 @@ def export_student_mistakes_json(
     output_path: str
 ) -> None:
     """
-    Exports mistake summary organized by student for each Chinese sentence.
+    导出按学生组织的每个中文句子的错误汇总
     
-    Format:
+    格式:
     {
       "chinese_sentence": {
         "student_name": "mistake_text",
@@ -393,30 +395,30 @@ def export_student_mistakes_json(
       ...
     }
     
-    Args:
-        mistake_summary: Dictionary mapping chinese_txt to student mistakes
-        baseline_sentences: Set of all baseline sentences
-        output_path: Path to save the JSON file
+    参数：
+        mistake_summary: 将 chinese_txt 映射到学生错误的字典
+        baseline_sentences: 所有基准句子的集合
+        output_path: 保存JSON文件的路径
     """
     export_data = {}
     
-    # Process each sentence in the baseline
+    # 处理基准中的每个句子
     for sentence in sorted(baseline_sentences):
         student_mistakes_dict = {}
         
-        # Get all mistakes for this sentence
+        # 获取该句子的所有错误
         if sentence in mistake_summary:
             for student_mistake in mistake_summary[sentence]:
                 student_mistakes_dict[student_mistake.student_name] = student_mistake.mistake
         
-        # Only include sentences that have mistakes
+        # 只包含有错误的句子
         if student_mistakes_dict:
             export_data[sentence] = student_mistakes_dict
     
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(export_data, f, ensure_ascii=False, indent=2)
     
-    print(f"✓ Exported student mistakes to: {output_path}")
+    print(f"✓ 已导出学生错误到: {output_path}")
 
 
 def export_statistics_json(
@@ -426,9 +428,9 @@ def export_statistics_json(
     output_path: str
 ) -> None:
     """
-    Exports statistical summary for each Chinese sentence without student names.
+    导出每个中文句子的统计摘要（不包含学生姓名）
     
-    Format:
+    格式:
     {
       "chinese_sentence": {
         "total_submissions": 10,
@@ -439,120 +441,265 @@ def export_statistics_json(
       ...
     }
     
-    Args:
-        mistake_summary: Dictionary mapping chinese_txt to student mistakes
-        baseline_sentences: Set of all baseline sentences
-        total_students: Total number of students processed
-        output_path: Path to save the JSON file
+    参数：
+        mistake_summary: 将 chinese_txt 映射到学生错误的字典
+        baseline_sentences: 所有基准句子的集合
+        total_students: 处理的学生总数
+        output_path: 保存JSON文件的路径
     """
     export_data = {}
     
-    # Process each sentence in the baseline
+    # 处理基准中的每个句子
     for sentence in sorted(baseline_sentences):
-        # Collect all unique mistakes for this sentence (no student names)
+        # 收集该句子的所有唯一错误（不包含学生姓名）
         unique_mistakes = set()
         mistake_count = 0
         
         if sentence in mistake_summary:
             mistake_count = len(mistake_summary[sentence])
             for student_mistake in mistake_summary[sentence]:
-                if student_mistake.mistake:  # Only add non-empty mistakes
+                if student_mistake.mistake:  # 只添加非空错误
                     unique_mistakes.add(student_mistake.mistake)
         
-        # Calculate mistake rate
+        # 计算错误率
         mistake_rate = (mistake_count / total_students * 100) if total_students > 0 else 0
         
         export_data[sentence] = {
             "total_submissions": total_students,
             "mistake_count": mistake_count,
             "mistake_rate": f"{mistake_rate:.2f}%",
-            "unique_mistakes": sorted(list(unique_mistakes))  # Sort for consistency
+            "unique_mistakes": sorted(list(unique_mistakes))  # 排序以保持一致性
         }
     
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(export_data, f, ensure_ascii=False, indent=2)
     
-    print(f"✓ Exported statistics to: {output_path}")
+    print(f"✓ 已导出统计信息到: {output_path}")
+
+
+def create_pie_charts_from_json(json_path: str, output_folder: str) -> None:
+    """
+    从统计摘要JSON文件创建饼图
+    
+    参数：
+        json_path: 2_statistics_summary.json 文件的路径
+        output_folder: 保存输出图表的文件夹
+    """
+    # 加载JSON数据
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    if not data:
+        print("没有数据可绘制!")
+        return
+    
+    num_sentences = len(data)
+    
+    # 计算网格大小
+    cols = 3
+    rows = (num_sentences + cols - 1) // cols  # 向上取整
+    
+    fig, axes = plt.subplots(rows, cols, figsize=(15, 5 * rows))
+    fig.suptitle('各句翻译错误率', fontsize=16, fontweight='bold')
+    
+    # 展平axes以便于迭代（处理单行情况）
+    if num_sentences == 1:
+        axes_flat = [axes]
+    elif rows == 1:
+        axes_flat = axes
+    else:
+        axes_flat = axes.flatten()
+    
+    # 配色方案
+    colors = ['#66c2a5', '#fc8d62']  # 绿色表示正确，橙色表示错误
+    explode = (0.05, 0)  # 稍微分离错误切片
+    
+    for idx, (sentence, stats) in enumerate(data.items()):
+        ax = axes_flat[idx]
+        
+        # 计算正确和错误的数量
+        total = stats['total_submissions']
+        incorrect = stats['mistake_count']
+        correct = total - incorrect
+        
+        # 饼图数据
+        sizes = [correct, incorrect]
+        labels = [f'正确\n({correct}/{total})', f'错误\n({incorrect}/{total})']
+        
+        # 创建饼图
+        wedges, texts, autotexts = ax.pie(
+            sizes, 
+            labels=labels, 
+            colors=colors,
+            autopct='%1.0f%%',
+            startangle=90,
+            explode=explode if incorrect > 0 else (0, 0),
+            textprops={'fontsize': 10}
+        )
+        
+        # 加粗百分比文本
+        for autotext in autotexts:
+            autotext.set_color('white')
+            autotext.set_fontweight('bold')
+            autotext.set_fontsize(11)
+        
+        # 添加带句子的标题（如果太长则截断）
+        sentence_short = sentence[:35] + '...' if len(sentence) > 35 else sentence
+        ax.set_title(f"{idx+1}. {sentence_short}", fontsize=11, pad=10, wrap=True)
+    
+    # 隐藏未使用的子图
+    for idx in range(num_sentences, len(axes_flat)):
+        axes_flat[idx].axis('off')
+    
+    plt.tight_layout()
+    
+    # 保存在同一文件夹中
+    output_path = os.path.join(output_folder, 'mistake_rate_pie_charts.png')
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    print(f"✓ 饼图已保存到: {output_path}")
+    
+    # 不自动显示图表以避免阻塞
+    # plt.show()
+
+
+def create_student_mistakes_visual(json_path: str, output_folder: str) -> None:
+    """
+    从 1_student_mistakes.json 创建可视化图片
+    显示中文句子及其对应的学生错误
+    
+    参数：
+        json_path: 1_student_mistakes.json 文件的路径
+        output_folder: 保存输出图片的文件夹
+    """
+    # 加载JSON数据
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    if not data:
+        print("没有数据可显示!")
+        return
+    
+    # 计算需要的图片高度
+    num_sentences = len(data)
+    
+    # 动态计算高度：每个句子区块约占 1.5 英寸
+    fig_height = max(8, num_sentences * 1.5)
+    
+    fig, ax = plt.subplots(figsize=(14, fig_height))
+    ax.axis('off')
+    
+    # 设置标题
+    title_text = '学生翻译错误详情'
+    fig.suptitle(title_text, fontsize=18, fontweight='bold', y=0.98)
+    
+    # 起始y坐标
+    y_position = 0.95
+    x_left = 0.05
+    line_height = 0.85 / num_sentences  # 根据句子数量动态调整行高
+    
+    # 颜色配置
+    sentence_color = '#2c3e50'  # 深灰蓝色 - 中文句子
+    student_color = '#e74c3c'   # 红色 - 学生名字
+    mistake_color = '#34495e'   # 深灰色 - 错误内容
+    box_color = '#ecf0f1'       # 浅灰色 - 背景框
+    
+    for idx, (sentence, student_mistakes) in enumerate(data.items()):
+        # 绘制背景框
+        if idx % 2 == 0:
+            rect = Rectangle((x_left - 0.01, y_position - line_height + 0.01), 
+                           0.92, line_height - 0.01, 
+                           facecolor=box_color, edgecolor='none', 
+                           transform=fig.transFigure, zorder=1)
+            fig.patches.append(rect)
+        
+        # 1. 显示中文句子（加粗）
+        sentence_display = f"{idx + 1}. {sentence}"
+        fig.text(x_left, y_position, sentence_display, 
+                fontsize=11, fontweight='bold', color=sentence_color,
+                va='top', ha='left', wrap=True, transform=fig.transFigure, zorder=2)
+        
+        y_position -= line_height * 0.35
+        
+        # 2. 显示学生错误
+        for student_name, mistake_text in student_mistakes.items():
+            mistake_line = f"   • {student_name}: {mistake_text}"
+            fig.text(x_left + 0.02, y_position, mistake_line,
+                    fontsize=9, color=mistake_color,
+                    va='top', ha='left', wrap=True, transform=fig.transFigure, zorder=2)
+            y_position -= line_height * 0.25
+        
+        # 句子之间的间距
+        y_position -= line_height * 0.15
+    
+    plt.tight_layout()
+    
+    # 保存图片
+    output_path = os.path.join(output_folder, 'student_mistakes_visual.png')
+    plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
+    print(f"✓ 学生错误可视化图已保存到: {output_path}")
+    
+    plt.close()
 
 
 # ==========================================
-# MAIN EXECUTION
+# 主程序执行
 # ==========================================
 
 if __name__ == '__main__':
-    # Configuration
-    ROOT_DIRECTORY = r"E:\zhenzhen_eng_coze\example\高一_翻译_10_4_reduced_example"
-    BASELINE_FOLDER = "于子航"
+    # 配置
+    ROOT_DIRECTORY = r"E:\zhenzhen_eng_coze\example\高三_9_reduced"
+    BASELINE_FOLDER = "乔子洋"
     OUTPUT_JSON_STUDENTS = os.path.join(ROOT_DIRECTORY, "1_student_mistakes.json")
     OUTPUT_JSON_STATISTICS = os.path.join(ROOT_DIRECTORY, "2_statistics_summary.json")
 
     try:
         print("=" * 60)
-        print("STUDENT MISTAKE SUMMARY SYSTEM")
+        print("学生翻译错误分析")
         print("=" * 60)
-        print()
         
-        # Run the summarization process
+        # 运行汇总过程
         final_summary, baseline_sentences = summarize_student_mistakes(
             ROOT_DIRECTORY, 
             BASELINE_FOLDER
         )
         
-        # Display results
-        print("=" * 60)
-        print("FINAL MISTAKE SUMMARY")
-        print("=" * 60)
+        # 生成统计信息
+        stats = generate_statistics_report(final_summary)
         
-        if final_summary:
-            for sentence, student_mistakes in final_summary.items():
-                print(f"\n📝 Chinese Text: {sentence}")
-                for sm in student_mistakes:
-                    print(f"   └─ Student: {sm.student_name}")
-                    print(f"      Mistake: {sm.mistake}")
-                    print(f"      Comment: {sm.comment[:60]}...")
-            
-            # Generate and display statistics
-            stats = generate_statistics_report(final_summary)
-            print("\n" + "=" * 60)
-            print("STATISTICS REPORT")
-            print("=" * 60)
-            print(f"Total unique sentences with mistakes: {stats['total_unique_sentences']}")
-            print(f"Total mistake instances: {stats['total_mistake_instances']}")
-            print(f"Total students processed: {stats['total_students']}")
-            print(f"\n📊 Mistakes per student:")
-            for student, count in sorted(stats['mistakes_per_student'].items()):
-                print(f"   • {student}: {count}")
-            print(f"\n🔥 Top 5 sentences with most mistakes:")
-            for sentence, count in stats['sentences_with_most_mistakes'][:5]:
-                print(f"   • ({count}x) {sentence[:50]}...")
-            
-            # Export to JSON files
-            print("\n" + "=" * 60)
-            print("EXPORTING JSON FILES")
-            print("=" * 60)
-            
-            # Export 1st JSON: Student-focused
-            export_student_mistakes_json(
-                final_summary, 
-                baseline_sentences,
-                OUTPUT_JSON_STUDENTS
-            )
-            
-            # Export 2nd JSON: Statistics-focused
-            export_statistics_json(
-                final_summary, 
-                baseline_sentences,
-                stats['total_students'],
-                OUTPUT_JSON_STATISTICS
-            )
-            
-        else:
-            print("No mistakes found matching the baseline.")
+        # 简单汇总输出
+        print(f"\n📊 汇总:")
+        print(f"   • 有错误的句子数: {stats['total_unique_sentences']}")
+        print(f"   • 错误实例总数: {stats['total_mistake_instances']}")
+        print(f"   • 已处理学生数: {stats['total_students']}")
+        
+        # 导出JSON文件
+        print(f"\n📁 导出文件...")
+        export_student_mistakes_json(
+            final_summary, 
+            baseline_sentences,
+            OUTPUT_JSON_STUDENTS
+        )
+        
+        export_statistics_json(
+            final_summary, 
+            baseline_sentences,
+            stats['total_students'],
+            OUTPUT_JSON_STATISTICS
+        )
+        
+        # 创建饼图
+        print(f"\n📈 生成饼图...")
+        create_pie_charts_from_json(OUTPUT_JSON_STATISTICS, ROOT_DIRECTORY)
+        
+        # 创建学生错误可视化图
+        print(f"\n📈 生成学生错误详情图...")
+        create_student_mistakes_visual(OUTPUT_JSON_STUDENTS, ROOT_DIRECTORY)
+        
+        print(f"\n✅ 所有任务已成功完成!")
             
     except FileNotFoundError as e:
-        print(f"\n❌ FATAL ERROR: {e}")
-        print("Please ensure the ROOT_DIRECTORY and BASELINE_FOLDER are correct.")
+        print(f"\n❌ 错误: {e}")
     except Exception as e:
-        print(f"\n❌ UNEXPECTED ERROR: {e}")
+        print(f"\n❌ 意外错误: {e}")
         import traceback
         traceback.print_exc()

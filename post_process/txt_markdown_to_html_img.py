@@ -114,6 +114,8 @@ def convert_markdown_to_image(markdown_content: str, output_path: str, width: in
             font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
             color: #e74c3c;
             font-size: 14px;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
         }
         
         pre {
@@ -123,12 +125,17 @@ def convert_markdown_to_image(markdown_content: str, output_path: str, width: in
             padding: 15px;
             overflow-x: auto;
             margin: 15px 0;
+            white-space: pre-wrap;       /* 添加：允许自动换行 */
+            word-wrap: break-word;       /* 添加：强制长单词换行 */
+            overflow-wrap: break-word;   /* 添加：现代浏览器的换行 */
         }
         
         pre code {
             background-color: transparent;
             padding: 0;
             color: #333;
+            white-space: pre-wrap;       /* 添加：允许自动换行 */
+            word-wrap: break-word;       /* 添加：强制长单词换行 */
         }
         
         /* 引用块 */
@@ -224,45 +231,52 @@ def convert_markdown_to_image(markdown_content: str, output_path: str, width: in
         </html>
         """
         
-        # 4. 动态计算高度
+        # 4. 动态计算高度 - 确保内容完整显示
         if height is None:
             # 根据内容长度估算高度
             line_count = markdown_content.count('\n') + 1
             char_count = len(markdown_content)
             
-            # 基础估算：每行约25px，每个字符约0.8px额外高度
+            # 更准确的高度计算，确保内容不被截断
+            # 基于行数的基础计算（每行约24px，比之前增加）
+            base_height = line_count * 24 + 200  # 增加基础边距
+            
+            # 基于字符数的额外高度（考虑换行和内容密度）
+            char_density_height = char_count * 0.4  # 稍微增加字符影响
+            
+            # 最终高度：确保有足够空间显示所有内容
             estimated_height = max(
-                line_count * 25 + char_count * 0.8 + 200,  # 基于行数和字符数
-                1500,  # 最小高度
-                min(char_count * 2, 4000)  # 根据字符数，但不超过4000px
+                base_height + char_density_height,  # 基础高度 + 内容密度
+                800,   # 增加最小高度
+                min(base_height + char_density_height, 4000)  # 适当增加最大高度限制
             )
             
-            height = int(estimated_height)
-            print(f"根据内容估算图片高度: {height}px (行数: {line_count}, 字符数: {char_count})")
+            # 额外增加一些安全边距，确保内容不被截断
+            safety_margin = 150
+            height = int(estimated_height + safety_margin)
+            print(f"安全高度计算: {height}px (行数: {line_count}, 字符数: {char_count}, 安全边距: {safety_margin}px)")
         
-        # 5. 转换为图片
+        # 5. 转换为图片 - 使用固定尺寸
         output_dir = os.path.dirname(output_path)
         output_filename = os.path.basename(output_path)
         
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         
-        # 使用html2image转换，尝试多种方法
+        # 使用html2image转换，只使用固定尺寸
         try:
-            # 方法1: 指定尺寸
+            # 直接使用计算出的固定尺寸
             hti = Html2Image(size=(width, height), output_path=output_dir)
             hti.screenshot(html_str=full_html, save_as=output_filename)
         except Exception as e:
-            print(f"方法1失败，尝试方法2: {e}")
-            # 方法2: 不指定高度，让其自动调整
+            print(f"固定尺寸转换失败，尝试不指定尺寸: {e}")
+            # 备用方案：完全不指定尺寸
             try:
-                hti = Html2Image(size=(width, 0), output_path=output_dir)
-                hti.screenshot(html_str=full_html, save_as=output_filename)
-            except Exception as e2:
-                print(f"方法2失败，尝试方法3: {e2}")
-                # 方法3: 完全不指定尺寸
                 hti = Html2Image(output_path=output_dir)
                 hti.screenshot(html_str=full_html, save_as=output_filename)
+            except Exception as e2:
+                print(f"图片转换完全失败: {e2}")
+                return False
         
         # 检查文件是否生成成功
         if os.path.exists(output_path):
@@ -461,7 +475,7 @@ if __name__ == "__main__":
             print(f"✗ 路径不存在: {target_path}")
     else:
         # 默认批量处理
-        default_directory = r"E:\zhenzhen_eng_coze\example\高三第二周作文_reduced"
+        default_directory = r"E:\zhenzhen_eng_coze\example\高三_9_reduced"
         if os.path.exists(default_directory):
             batch_convert_directory(default_directory)
         else:

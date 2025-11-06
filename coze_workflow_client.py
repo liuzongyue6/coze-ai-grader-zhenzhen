@@ -1,5 +1,6 @@
 """
-多文件处理器 - 使用指定的file_id数组调用Coze Workflow流式接口并将结果保存到TXT文档
+多输入输出处理器 - 使用指定的file_id数组调用Coze Workflow流式接口并将结果保存到json文档
+后续的json处理交给下游格式
 """
 
 import os
@@ -227,9 +228,9 @@ def main():
     print("=== 多文件流式处理器启动 ===")
     
     # ======= 配置设置区域 =======
-    config_file = "config/config.translation_record.json"
+    config_file = "config/config.translation.json"
     
-    folder_tobe_process = r"E:\真真英语\作文\test\Translation_Unit"
+    folder_tobe_process = r"E:\zhenzhen_eng_coze\example\高一_8_reduced"
     
     # 支持的图片格式 - 可以根据需要添加或删除格式
     supported_formats = ('.png', '.jpg', '.jpeg', '.bmp', '.gif')

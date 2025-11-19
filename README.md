@@ -1,40 +1,48 @@
 # AI Essay Grader
 
-🤖 Automated English Essay Grading System Based on Coze Workflow
+🤖 基于Coze Workflow的自动化英语作文和翻译批改系统
 
-## Features
+## 功能特性
 
-- 📸 **Batch Image Processing**: Automatically process essay images in folders
-- 🎯 **AI-Powered Grading**: Use Coze workflow for essay evaluation
-- 📊 **Detailed Feedback**: Provide English evaluation and writing assessment
-- 🔄 **Post-processing Tools**: Format results and compress images
-- 📁 **Batch Operations**: Support batch processing of WeChat folders
+- 📸 **批量图片处理**: 自动处理文件夹中的作文图片
+- 🎯 **AI智能批改**: 使用Coze workflow进行作文/翻译评估
+- 📊 **详细反馈**: 提供英语评估和写作建议
+- 🔄 **后处理工具**: 格式化结果并生成图片报告
+- 📁 **批量操作**: 支持批量处理微信文件夹结构
+- 📈 **错误分析**: 统计和可视化翻译错误
 
-## Project Structure
+## 项目结构
 ```
-├── coze_workflow_client.py          # Main processor - calls Coze API
+├── coze_workflow_client.py          # 主处理器 - 调用Coze API进行批改
 ├── config/
-│   └── config.example.json         # Configuration file (API keys required)
-├── post_process/                   # Post-processing tools
-│   ├── json_to_markdown.py         # general paser, from json to makrdown, for single instance
-│   ├── json_to_markdown_trans.py   # specific paser, for translation
-│   └── txt_markdown_to_html_img.py # transfer txt markdown to image
+│   ├── config.example.json         # 配置文件示例 (需要API密钥)
+│   ├── translation_format_config.py      # 翻译格式配置
+│   └── translation_rec_format_config.py  # 翻译推荐格式配置
+├── post_process/                   # 后处理工具集
+│   ├── api_response_format.py      # 通用API响应格式化器
+│   ├── json_to_markdown.py         # JSON转Markdown转换器
+│   ├── text_to_image_simple.py     # 简单文本转图片工具(PIL)
+│   └── txt_markdown_to_html_img.py # Markdown转HTML图片工具(html2image)
+├── database/
+│   └── translation_mistake_scanner_report.py  # 翻译错误统计分析工具
 ├── utils/
-│   └── compress_file.py            # Image compression tool
-└── test/                           # Test folder
+│   └── compress_file.py            # 图片压缩工具
+└── test/                           # 测试文件夹
+    ├── test_json_decouple_extraction.py  # JSON解析测试
+    └── test_html2image_converter.py      # 图片转换测试
 ```
 
-## Quick Start
+## 快速开始
 
-### 1. Install Dependencies
+### 1. 安装依赖
 
 ```bash
-pip install cozepy pillow
+pip install cozepy pillow markdown html2image matplotlib
 ```
 
-### 2. Configuration Setup
+### 2. 配置设置
 
-Copy `config/config.example.json` to `config/config.json` and fill in your configuration:
+复制 `config/config.example.json` 为 `config/config.json` 并填入您的配置：
 
 ```json
 {
@@ -43,34 +51,156 @@ Copy `config/config.example.json` to `config/config.json` and fill in your confi
 }
 ```
 
-### 3. Run the Program
+您可以从Coze工作流页面获取这些信息：
+- workflow_id: 工作流ID
+- api_token: 您的API访问令牌
 
-```bash
-python essay_processor.py
+### 3. 运行程序
+
+#### 主流程：批改作文/翻译
+
+编辑 `coze_workflow_client.py` 中的配置区域：
+
+```python
+# 配置设置
+config_file = "config/config.json"
+folder_tobe_process = r"your_folder_path"  # 包含学生作业的根文件夹
+supported_formats = ('.png', '.jpg', '.jpeg', '.bmp', '.gif')
 ```
 
-## Usage Instructions
+然后运行：
+```bash
+python coze_workflow_client.py
+```
 
-1. Organize essay images in folders by student names
-2. Run the main program, the system will automatically:
-   - Upload images to Coze
-   - Call workflow for grading
-   - Generate grading result files
-3. Use post-processing tools to format results
+程序会自动：
+1. 扫描指定文件夹下的所有学生子文件夹
+2. 上传每个文件夹中的图片到Coze
+3. 调用workflow进行AI批改
+4. 保存原始JSON响应到各学生文件夹
 
-## Tool Descriptions
+## 使用说明
 
-- **coze_workflow_client.py**: Main processor
-- **api_response_format.py**: Format API results into readable txt
-- **post_process/txt_to_image_converter.py**: post_process the txt file to images
-- **utils/compress_file.py**: Compress images to reduce upload time
-- **database/mistake_scanner.py**: count and summarize the mistakes
-## Notes
+### 工作流程
 
-- Ensure Coze API is configured correctly
-- Supported image formats: PNG, JPG, JPEG, BMP, GIF
-- Recommended image size: under 2MB
+1. **组织文件结构**
+   ```
+   根文件夹/
+   ├── 学生1/
+   │   ├── 图片1.jpg
+   │   └── 图片2.jpg
+   ├── 学生2/
+   │   └── 图片1.jpg
+   └── ...
+   ```
 
-## License
+2. **批改处理** - 运行 `coze_workflow_client.py`
+   - 自动上传图片
+   - 调用Coze workflow批改
+   - 生成JSON缓存文件 (格式: `学生名_response_cache_时间戳.json`)
+
+3. **格式化结果** - 使用 `post_process/api_response_format.py`
+   - 解析JSON响应
+   - 提取批改内容
+   - 生成Markdown格式文本
+   - 支持单输出和多输出配置
+
+4. **生成图片报告** - 选择转换工具
+   - `text_to_image_simple.py`: 使用PIL库，适合简单格式
+   - `txt_markdown_to_html_img.py`: 使用html2image，支持完整Markdown语法
+
+5. **错误分析** (翻译专用) - 运行 `translation_mistake_scanner_report.py`
+   - 提取标记为"翻得不好"的错误
+   - 生成统计报告JSON
+   - 生成可视化图表
+
+## 工具详细说明
+
+### 核心处理器
+
+- **coze_workflow_client.py**: 主处理程序
+  - 批量上传图片到Coze
+  - 流式调用workflow API
+  - 处理中断恢复
+  - 保存原始JSON响应
+
+### 后处理工具
+
+- **api_response_format.py**: 通用API响应格式化器
+  - 支持单输出和多输出配置
+  - 从JSON提取嵌套内容
+  - 处理转义字符
+  - 生成格式化Markdown文本
+
+- **json_to_markdown.py**: JSON到Markdown转换器
+  - 字段映射和排序
+  - 自定义输出格式
+  - 适配批改报告
+
+- **text_to_image_simple.py**: 简单文本转图片
+  - 使用PIL库直接渲染
+  - 支持中文字体
+  - 智能文本换行
+  - 轻量快速
+
+- **txt_markdown_to_html_img.py**: Markdown转HTML图片
+  - 完整Markdown语法支持
+  - 使用html2image渲染
+  - 丰富的CSS样式
+  - 适合复杂格式
+
+### 数据分析工具
+
+- **translation_mistake_scanner_report.py**: 翻译错误分析
+  - 解析学生翻译JSON日志
+  - 提取"翻得不好"的错误
+  - 生成错误统计报告
+  - 创建可视化图表
+  - 输出文件：
+    - `1_student_mistakes.json`: 学生错误详情
+    - `2_statistics_summary.json`: 统计摘要
+    - `mistake_rate_pie_charts.png`: 错误率饼图
+    - `student_mistakes_visual.png`: 错误详情可视化
+
+### 实用工具
+
+- **compress_file.py**: 图片压缩工具
+  - 批量压缩图片到指定大小
+  - 减少上传时间
+  - 保持图片质量
+  - 支持多种格式
+
+## 配置说明
+
+### 主配置文件 (config.json)
+
+```json
+{
+    "workflow_id": "your_workflow_id",
+    "api_token": "your_api_token"
+}
+```
+
+### 格式配置文件
+
+- `translation_format_config.py`: 翻译输出格式配置
+- `translation_rec_format_config.py`: 翻译推荐格式配置
+
+这些配置文件定义了：
+- 输出字段映射
+- 字段显示顺序
+- Markdown格式模板
+- 多输出类型配置
+
+## 注意事项
+
+- 确保正确配置Coze API密钥
+- 支持的图片格式: PNG, JPG, JPEG, BMP, GIF
+- 建议图片大小: 2MB以下
+- 中文字体路径可能需要根据系统调整
+- API调用需要稳定的网络连接
+- 流式处理支持中断恢复
+
+## 许可证
 
 MIT License

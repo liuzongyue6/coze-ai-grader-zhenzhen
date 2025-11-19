@@ -1,14 +1,13 @@
 # AI Essay Grader
 
-🤖 基于Coze Workflow的自动化英语作文和翻译批改系统
+🤖 基于Coze Workflow的自动化英语翻译批改系统
 
 ## 功能特性
 
-- 📸 **批量图片处理**: 自动处理文件夹中的作文图片
+- 📸 **批量图片处理**: 自动处理文件夹中的图片
 - 🎯 **AI智能批改**: 使用Coze workflow进行作文/翻译评估
-- 📊 **详细反馈**: 提供英语评估和写作建议
 - 🔄 **后处理工具**: 格式化结果并生成图片报告
-- 📁 **批量操作**: 支持批量处理微信文件夹结构
+- 📁 **批量操作**: 支持批量处理文件夹结构
 - 📈 **错误分析**: 统计和可视化翻译错误
 
 ## 项目结构
@@ -64,7 +63,7 @@ pip install cozepy pillow markdown html2image matplotlib
 ```python
 # 配置设置
 config_file = "config/config.json"
-folder_tobe_process = r"your_folder_path"  # 包含学生作业的根文件夹
+folder_tobe_process = r"your_folder_path"  # 包含作业的根文件夹
 supported_formats = ('.png', '.jpg', '.jpeg', '.bmp', '.gif')
 ```
 
@@ -74,10 +73,10 @@ python coze_workflow_client.py
 ```
 
 程序会自动：
-1. 扫描指定文件夹下的所有学生子文件夹
+1. 扫描指定文件夹下的所有子文件夹
 2. 上传每个文件夹中的图片到Coze
 3. 调用workflow进行AI批改
-4. 保存原始JSON响应到各学生文件夹
+4. 保存原始JSON响应到各文件夹
 
 ## 使用说明
 

@@ -50,7 +50,7 @@ pip install cozepy pillow markdown html2image matplotlib
 }
 ```
 
-您可以从Coze工作流页面获取这些信息：
+可以从Coze工作流页面获取这些信息：
 - workflow_id: 工作流ID
 - api_token: 您的API访问令牌
 

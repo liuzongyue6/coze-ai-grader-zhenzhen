@@ -499,8 +499,9 @@ def create_pie_charts_from_json(json_path: str, output_folder: str) -> None:
     cols = 3
     rows = (num_sentences + cols - 1) // cols  # 向上取整
     
-    fig, axes = plt.subplots(rows, cols, figsize=(15, 5 * rows))
-    fig.suptitle('各句翻译错误率', fontsize=16, fontweight='bold')
+    # 增加每行的高度，从 5 改为 6
+    fig, axes = plt.subplots(rows, cols, figsize=(15, 6 * rows))
+    fig.suptitle('各句翻译错误率', fontsize=16, fontweight='bold', y=0.995)
     
     # 展平axes以便于迭代（处理单行情况）
     if num_sentences == 1:
@@ -543,15 +544,38 @@ def create_pie_charts_from_json(json_path: str, output_folder: str) -> None:
             autotext.set_fontweight('bold')
             autotext.set_fontsize(11)
         
-        # 添加带句子的标题（如果太长则截断）
-        sentence_short = sentence[:35] + '...' if len(sentence) > 35 else sentence
-        ax.set_title(f"{idx+1}. {sentence_short}", fontsize=11, pad=10, wrap=True)
+        # 添加带句子的标题（手动分成两行以避免拥挤）
+        # 如果句子太长，在合适的位置分成两行
+        max_line_length = 25  # 每行最多25个字符
+        
+        if len(sentence) > max_line_length:
+            # 尝试在逗号、句号等标点处分割
+            split_point = max_line_length
+            for punctuation in ['，', '。', '、', '；', ' ']:
+                pos = sentence[:max_line_length + 10].rfind(punctuation)
+                if pos > 15:  # 确保第一行至少有15个字符
+                    split_point = pos + 1
+                    break
+            
+            line1 = sentence[:split_point].strip()
+            line2 = sentence[split_point:].strip()
+            
+            # 如果第二行还是太长，截断并添加省略号
+            if len(line2) > max_line_length:
+                line2 = line2[:max_line_length] + '...'
+            
+            sentence_display = f"{idx+1}. {line1}\n{line2}"
+        else:
+            sentence_display = f"{idx+1}. {sentence}"
+        
+        ax.set_title(sentence_display, fontsize=10, pad=20)
     
     # 隐藏未使用的子图
     for idx in range(num_sentences, len(axes_flat)):
         axes_flat[idx].axis('off')
     
-    plt.tight_layout()
+    # 增加子图之间的间距，使用 h_pad 和 w_pad 参数
+    plt.tight_layout(rect=[0, 0, 1, 0.985], h_pad=3.0, w_pad=2.0)
     
     # 保存在同一文件夹中
     output_path = os.path.join(output_folder, 'mistake_rate_pie_charts.png')
@@ -604,14 +628,6 @@ def create_student_mistakes_visual(json_path: str, output_folder: str) -> None:
     box_color = '#ecf0f1'       # 浅灰色 - 背景框
     
     for idx, (sentence, student_mistakes) in enumerate(data.items()):
-        # 绘制背景框
-        if idx % 2 == 0:
-            rect = Rectangle((x_left - 0.01, y_position - line_height + 0.01), 
-                           0.92, line_height - 0.01, 
-                           facecolor=box_color, edgecolor='none', 
-                           transform=fig.transFigure, zorder=1)
-            fig.patches.append(rect)
-        
         # 1. 显示中文句子（加粗）
         sentence_display = f"{idx + 1}. {sentence}"
         fig.text(x_left, y_position, sentence_display, 
@@ -631,7 +647,7 @@ def create_student_mistakes_visual(json_path: str, output_folder: str) -> None:
         # 句子之间的间距
         y_position -= line_height * 0.15
     
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
     
     # 保存图片
     output_path = os.path.join(output_folder, 'student_mistakes_visual.png')
@@ -647,8 +663,8 @@ def create_student_mistakes_visual(json_path: str, output_folder: str) -> None:
 
 if __name__ == '__main__':
     # 配置
-    ROOT_DIRECTORY = r"E:\zhenzhen_eng_coze\example\高三_9_reduced"
-    BASELINE_FOLDER = "乔子洋"
+    ROOT_DIRECTORY = r"E:\zhenzhen_eng_coze\example\高二_8_reduced"
+    BASELINE_FOLDER = "czc"
     OUTPUT_JSON_STUDENTS = os.path.join(ROOT_DIRECTORY, "1_student_mistakes.json")
     OUTPUT_JSON_STATISTICS = os.path.join(ROOT_DIRECTORY, "2_statistics_summary.json")
 

@@ -230,7 +230,7 @@ def main():
     # ======= 配置设置区域 =======
     config_file = "config/config.translation.json"
     
-    folder_tobe_process = r"E:\zhenzhen_eng_coze\example\高一_8_reduced"
+    folder_tobe_process = r"E:\zhenzhen_eng_coze\example\高一_10_reduced"
     
     # 支持的图片格式 - 可以根据需要添加或删除格式
     supported_formats = ('.png', '.jpg', '.jpeg', '.bmp', '.gif')

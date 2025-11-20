@@ -126,7 +126,7 @@ def main():
     # 配置参数 - 用户可以在这里修改
     source_folder = input("请输入源文件夹路径 (或直接回车使用默认): ").strip()
     if not source_folder:
-        source_folder = r"E:\zhenzhen_eng_coze\example\高三第二周作业_Size_Reduced"
+        source_folder = r"E:\zhenzhen_eng_coze\example\高一_9_reduced"
     
     # 创建目标文件夹名称（原文件夹_reduced）
     source_folder_name = os.path.basename(source_folder.rstrip(os.sep))

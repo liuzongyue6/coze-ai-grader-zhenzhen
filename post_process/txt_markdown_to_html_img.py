@@ -475,7 +475,7 @@ if __name__ == "__main__":
             print(f"✗ 路径不存在: {target_path}")
     else:
         # 默认批量处理
-        default_directory = r"E:\zhenzhen_eng_coze\example\高三_9_reduced"
+        default_directory = r"E:\zhenzhen_eng_coze\example\高二_9_reduced"
         if os.path.exists(default_directory):
             batch_convert_directory(default_directory)
         else:

@@ -34,3 +34,6 @@ Archive/
 config/config.essay.json
 config/config.summary.json
 config/config.translation.json
+
+# 日志目录
+logs/

@@ -6,6 +6,7 @@
 import os
 import json
 import glob
+import logging
 from typing import Optional, List
 from datetime import datetime
 from pathlib import Path
@@ -19,20 +20,55 @@ from cozepy import (
     WorkflowEventType
 )
 
-def load_config(config_file_path="config/config.json"):
+def setup_logger(log_dir="logs"):
+    """设置日志记录器"""
+    # 创建日志目录
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    
+    # 创建日志文件名（包含时间戳）
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_file = os.path.join(log_dir, f"coze_workflow_{timestamp}.log")
+    
+    # 配置日志格式
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file, encoding='utf-8'),
+            logging.StreamHandler()  # 同时输出到控制台
+        ]
+    )
+    
+    logger = logging.getLogger(__name__)
+    logger.info(f"日志系统初始化完成，日志文件: {log_file}")
+    return logger
+
+def load_config(config_file_path="config/config.json", logger=None):
     """从配置文件加载workflow ID和API token"""
     try:
         with open(config_file_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
+        if logger:
+            logger.info(f"配置文件加载成功: {config_file_path}")
         return config.get("workflow_id"), config.get("api_token")
     except FileNotFoundError:
-        print(f"配置文件 {config_file_path} 不存在")
+        error_msg = f"配置文件 {config_file_path} 不存在"
+        if logger:
+            logger.error(error_msg)
+        print(error_msg)
         return None, None
     except json.JSONDecodeError:
-        print(f"配置文件 {config_file_path} 格式错误")
+        error_msg = f"配置文件 {config_file_path} 格式错误"
+        if logger:
+            logger.error(error_msg)
+        print(error_msg)
         return None, None
     except Exception as e:
-        print(f"读取配置文件失败: {str(e)}")
+        error_msg = f"读取配置文件失败: {str(e)}"
+        if logger:
+            logger.error(error_msg)
+        print(error_msg)
         return None, None
 
 def get_coze_api_base() -> str:
@@ -49,25 +85,45 @@ def get_image_files_in_folder(folder_path, supported_formats):
         image_paths.extend(glob.glob(os.path.join(folder_path, f'*{fmt}'), recursive=False))
     return sorted(image_paths)
 
-def upload_images_and_get_file_ids(coze, image_paths):
+def upload_images_and_get_file_ids(coze, image_paths, logger=None):
     """上传图片文件并返回file_ids列表"""
     file_ids = []
+    failed_files = []
     try:
         for image_path in image_paths:
-            file = coze.files.upload(file=Path(image_path))
-            file_ids.append(file.id)
-            print(f"上传成功: {os.path.basename(image_path)} -> file_id: {file.id}")
+            try:
+                file = coze.files.upload(file=Path(image_path))
+                file_ids.append(file.id)
+                print(f"上传成功: {os.path.basename(image_path)} -> file_id: {file.id}")
+                if logger:
+                    logger.info(f"上传成功: {os.path.basename(image_path)} -> file_id: {file.id}")
+            except Exception as e:
+                error_msg = f"上传单个文件失败: {os.path.basename(image_path)}, 错误: {str(e)}"
+                failed_files.append(os.path.basename(image_path))
+                if logger:
+                    logger.error(error_msg)
+                print(error_msg)
+        
+        if failed_files and logger:
+            logger.warning(f"部分文件上传失败，失败文件列表: {failed_files}")
+        
         return file_ids
     except Exception as e:
-        print(f"上传图片失败: {str(e)}")
+        error_msg = f"上传图片失败: {str(e)}"
+        if logger:
+            logger.error(error_msg)
+        print(error_msg)
         return []
 
-def scan_wechat_folders(wechat_folder, supported_formats):
+def scan_wechat_folders(wechat_folder, supported_formats, logger=None):
     """扫描微信作文文件夹，返回{文件夹名: [图片路径列表]}的字典"""
     folders_data = {}
     
     if not os.path.exists(wechat_folder):
-        print(f"微信作文文件夹不存在: {wechat_folder}")
+        error_msg = f"微信作文文件夹不存在: {wechat_folder}"
+        if logger:
+            logger.error(error_msg)
+        print(error_msg)
         return folders_data
     
     # 遍历所有子文件夹
@@ -79,12 +135,17 @@ def scan_wechat_folders(wechat_folder, supported_formats):
             if image_paths:
                 folders_data[item] = image_paths
                 print(f"发现文件夹 '{item}': {len(image_paths)} 张图片")
+                if logger:
+                    logger.info(f"发现文件夹 '{item}': {len(image_paths)} 张图片")
             else:
-                print(f"文件夹 '{item}' 中没有图片文件")
+                warning_msg = f"文件夹 '{item}' 中没有图片文件"
+                print(warning_msg)
+                if logger:
+                    logger.warning(warning_msg)
     
     return folders_data
 
-def save_raw_response_cache(folder_path: str, folder_name: str, messages: List, timestamp: str):
+def save_raw_response_cache(folder_path: str, folder_name: str, messages: List, timestamp: str, logger=None):
     """保存原始API响应到JSON缓存文件"""
     cache_data = {
         "folder_name": folder_name,
@@ -106,12 +167,17 @@ def save_raw_response_cache(folder_path: str, folder_name: str, messages: List, 
         with open(cache_file, 'w', encoding='utf-8') as f:
             json.dump(cache_data, f, ensure_ascii=False, indent=2)
         print(f"   💾 原始响应已缓存到: {cache_file}")
+        if logger:
+            logger.info(f"原始响应已缓存到: {cache_file}")
         return cache_file
     except Exception as e:
-        print(f"   ❌ 保存缓存失败: {str(e)}")
+        error_msg = f"保存缓存失败: {str(e)}, 文件夹: {folder_name}"
+        print(f"   ❌ {error_msg}")
+        if logger:
+            logger.error(error_msg)
         return None
 
-def handle_workflow_iterator(stream: Stream[WorkflowEvent], file_ids: List[str], folder_name: str = None, workflow_id: str = None):
+def handle_workflow_iterator(stream: Stream[WorkflowEvent], file_ids: List[str], folder_name: str = None, workflow_id: str = None, logger=None):
     """处理工作流流式事件，只收集数据不保存txt文件"""
     messages = []
     errors = []
@@ -122,11 +188,16 @@ def handle_workflow_iterator(stream: Stream[WorkflowEvent], file_ids: List[str],
             messages.append(event.message)
             
         elif event.event == WorkflowEventType.ERROR:
+            error_msg = f"工作流错误: {event.error}, 文件夹: {folder_name}"
             print("got error", event.error)
+            if logger:
+                logger.error(error_msg)
             errors.append(event.error)
             
         elif event.event == WorkflowEventType.INTERRUPT:
             print("got interrupt, resuming...")
+            if logger:
+                logger.info(f"工作流中断，正在恢复... 文件夹: {folder_name}")
             # 递归处理中断恢复
             sub_messages, sub_errors = handle_workflow_iterator(
                 coze.workflows.runs.resume(
@@ -137,18 +208,21 @@ def handle_workflow_iterator(stream: Stream[WorkflowEvent], file_ids: List[str],
                 ),
                 file_ids,
                 folder_name,
-                workflow_id
+                workflow_id,
+                logger
             )
             messages.extend(sub_messages)
             errors.extend(sub_errors)
     
     return messages, errors
 
-def process_files_with_workflow_stream(coze, workflow_id, file_ids: List[str], output_folder: str, folder_name: str = None):
+def process_files_with_workflow_stream(coze, workflow_id, file_ids: List[str], output_folder: str, folder_name: str = None, logger=None):
     """使用工作流流式接口处理指定的文件ID数组，只保存JSON缓存"""
     try:
         print(f"开始流式处理文件数组: {file_ids}")
         print(f"文件数量: {len(file_ids)}")
+        if logger:
+            logger.info(f"开始处理文件夹: {folder_name}, 文件数量: {len(file_ids)}, file_ids: {file_ids}")
         
         # 根据参考文档格式创建文件数组参数
         file_array = []
@@ -168,42 +242,63 @@ def process_files_with_workflow_stream(coze, workflow_id, file_ids: List[str], o
         )
         
         # 处理流式事件
-        messages, errors = handle_workflow_iterator(stream, file_ids, folder_name, workflow_id)
+        messages, errors = handle_workflow_iterator(stream, file_ids, folder_name, workflow_id, logger)
         
         # 只保存JSON缓存
         if messages and folder_name:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            save_raw_response_cache(output_folder, folder_name, messages, timestamp)
+            save_raw_response_cache(output_folder, folder_name, messages, timestamp, logger)
         
         print("流式处理完成!")
+        if logger:
+            logger.info(f"文件夹 {folder_name} 流式处理完成，消息数量: {len(messages)}")
         return True, messages
         
     except Exception as e:
-        error_msg = f"流式处理文件数组失败: {str(e)}"
+        error_msg = f"流式处理文件数组失败: {str(e)}, 文件夹: {folder_name}"
         print(error_msg)
+        if logger:
+            logger.error(error_msg)
         return False, []
 
-def process_folders(coze, workflow_id, wechat_folder, supported_formats):
+def process_folders(coze, workflow_id, wechat_folder, supported_formats, logger=None):
     """处理微信作文文件夹中的所有子文件夹"""
     print("=== 第一步：扫描文件夹结构 ===")
-    folders_data = scan_wechat_folders(wechat_folder, supported_formats)
+    if logger:
+        logger.info("开始扫描文件夹结构")
+    
+    folders_data = scan_wechat_folders(wechat_folder, supported_formats, logger)
     
     if not folders_data:
-        print("没有找到包含图片的文件夹")
+        error_msg = "没有找到包含图片的文件夹"
+        print(error_msg)
+        if logger:
+            logger.error(error_msg)
         return
     
     print(f"\n=== 第二步：逐个处理 {len(folders_data)} 个文件夹 ===")
+    if logger:
+        logger.info(f"开始处理 {len(folders_data)} 个文件夹")
+    
+    successful_folders = []
+    failed_folders = []
     
     for idx, (folder_name, image_paths) in enumerate(folders_data.items(), 1):
         print(f"\n📁 [{idx}/{len(folders_data)}] 正在处理文件夹: {folder_name}")
         print(f"   图片文件: {[os.path.basename(p) for p in image_paths]}")
+        if logger:
+            logger.info(f"[{idx}/{len(folders_data)}] 开始处理文件夹: {folder_name}, 图片数量: {len(image_paths)}")
         
         # 上传图片获取file_ids
         print(f"   ⬆️  正在上传 {len(image_paths)} 张图片...")
-        file_ids = upload_images_and_get_file_ids(coze, image_paths)
+        file_ids = upload_images_and_get_file_ids(coze, image_paths, logger)
         
         if not file_ids:
-            print(f"   ❌ 文件夹 '{folder_name}' 图片上传失败，跳过处理")
+            error_msg = f"文件夹 '{folder_name}' 图片上传失败，跳过处理"
+            print(f"   ❌ {error_msg}")
+            if logger:
+                logger.error(error_msg)
+            failed_folders.append(folder_name)
             continue
         
         folder_path = os.path.join(wechat_folder, folder_name)
@@ -212,20 +307,37 @@ def process_folders(coze, workflow_id, wechat_folder, supported_formats):
         print(f"   📄 只保存JSON缓存文件")
         
         # 处理这个文件夹的文件，只保存JSON
-        success, messages = process_files_with_workflow_stream(coze, workflow_id, file_ids, folder_path, folder_name)
+        success, messages = process_files_with_workflow_stream(coze, workflow_id, file_ids, folder_path, folder_name, logger)
         
         if success:
             print(f"   ✅ 文件夹 '{folder_name}' 处理完成!")
             if messages:
                 print(f"   💾 JSON缓存已保存")
+            successful_folders.append(folder_name)
         else:
-            print(f"   ❌ 文件夹 '{folder_name}' 处理失败")
+            error_msg = f"文件夹 '{folder_name}' 处理失败"
+            print(f"   ❌ {error_msg}")
+            if logger:
+                logger.error(error_msg)
+            failed_folders.append(folder_name)
         
         print(f"   📋 进度: {idx}/{len(folders_data)} 个文件夹已处理")
+    
+    # 输出最终统计
+    if logger:
+        logger.info(f"处理完成! 成功: {len(successful_folders)}, 失败: {len(failed_folders)}")
+        if successful_folders:
+            logger.info(f"成功处理的文件夹: {successful_folders}")
+        if failed_folders:
+            logger.error(f"失败的文件夹: {failed_folders}")
 
 def main():
     """主函数"""
     print("=== 多文件流式处理器启动 ===")
+    
+    # 初始化日志系统
+    logger = setup_logger()
+    logger.info("=== 多文件流式处理器启动 ===")
     
     # ======= 配置设置区域 =======
     config_file = "config/config.translation.json"
@@ -238,13 +350,18 @@ def main():
     print(f"配置文件路径: {config_file}")
     print(f"微信作文文件夹: {folder_tobe_process}")
     print(f"支持的图片格式: {supported_formats}")
+    logger.info(f"配置文件路径: {config_file}")
+    logger.info(f"微信作文文件夹: {folder_tobe_process}")
+    logger.info(f"支持的图片格式: {supported_formats}")
     # ======= 配置设置区域结束 =======
     
     # 检查配置文件
-    workflow_id, api_token = load_config(config_file)
+    workflow_id, api_token = load_config(config_file, logger)
     
     if not workflow_id or not api_token:
-        print(f"错误: 请检查配置文件 {config_file} 是否正确设置了 workflow_id 和 api_token")
+        error_msg = f"错误: 请检查配置文件 {config_file} 是否正确设置了 workflow_id 和 api_token"
+        print(error_msg)
+        logger.error(error_msg)
         print("配置文件格式示例:")
         print("""{
     "workflow_id": "your_workflow_id_here",
@@ -254,6 +371,8 @@ def main():
     
     print(f"工作流ID: {workflow_id}")
     print(f"API Token: {api_token[:10]}***{api_token[-10:] if len(api_token) > 20 else '***'}")
+    logger.info(f"工作流ID: {workflow_id}")
+    logger.info("API Token已加载")
     
     # 初始化Coze客户端
     try:
@@ -262,12 +381,16 @@ def main():
             base_url=get_coze_api_base()
         )
         print("Coze客户端初始化成功")
+        logger.info("Coze客户端初始化成功")
     except Exception as e:
-        print(f"Coze客户端初始化失败: {str(e)}")
+        error_msg = f"Coze客户端初始化失败: {str(e)}"
+        print(error_msg)
+        logger.error(error_msg)
         return
     
     # 开始处理
-    process_folders(coze, workflow_id, folder_tobe_process, supported_formats)
+    process_folders(coze, workflow_id, folder_tobe_process, supported_formats, logger)
+    logger.info("=== 所有处理完成 ===")
 
 if __name__ == "__main__":
     main()

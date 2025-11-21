@@ -10,6 +10,7 @@ import logging
 from typing import Optional, List
 from datetime import datetime
 from pathlib import Path
+import time  # 在文件顶部添加这个import
 
 from cozepy import (
     COZE_CN_BASE_URL,
@@ -216,52 +217,105 @@ def handle_workflow_iterator(stream: Stream[WorkflowEvent], file_ids: List[str],
     
     return messages, errors
 
-def process_files_with_workflow_stream(coze, workflow_id, file_ids: List[str], output_folder: str, folder_name: str = None, logger=None):
-    """使用工作流流式接口处理指定的文件ID数组，只保存JSON缓存"""
-    try:
-        print(f"开始流式处理文件数组: {file_ids}")
-        print(f"文件数量: {len(file_ids)}")
-        if logger:
-            logger.info(f"开始处理文件夹: {folder_name}, 文件数量: {len(file_ids)}, file_ids: {file_ids}")
-        
-        # 根据参考文档格式创建文件数组参数
-        file_array = []
-        for file_id in file_ids:
-            file_array.append(json.dumps({"file_id": file_id}))
-        
-        parameters = {
-            "input": file_array
-        }
-        
-        print(f"使用文件数组参数格式: {parameters}")
-        
-        # 创建流式工作流运行
-        stream = coze.workflows.runs.stream(
-            workflow_id=workflow_id,
-            parameters=parameters
-        )
-        
-        # 处理流式事件
-        messages, errors = handle_workflow_iterator(stream, file_ids, folder_name, workflow_id, logger)
-        
-        # 只保存JSON缓存
-        if messages and folder_name:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            save_raw_response_cache(output_folder, folder_name, messages, timestamp, logger)
-        
-        print("流式处理完成!")
-        if logger:
-            logger.info(f"文件夹 {folder_name} 流式处理完成，消息数量: {len(messages)}")
-        return True, messages
-        
-    except Exception as e:
-        error_msg = f"流式处理文件数组失败: {str(e)}, 文件夹: {folder_name}"
-        print(error_msg)
-        if logger:
-            logger.error(error_msg)
-        return False, []
+def process_files_with_workflow_stream(coze, workflow_id, file_ids: List[str], output_folder: str, folder_name: str = None, logger=None, max_retries: int = 3, retry_delay: int = 5):
+    """使用工作流流式接口处理指定的文件ID数组，只保存JSON缓存，支持重试机制"""
+    
+    for attempt in range(max_retries):
+        try:
+            if attempt > 0:
+                print(f"   🔄 第 {attempt + 1}/{max_retries} 次重试...")
+                if logger:
+                    logger.info(f"文件夹 {folder_name} 第 {attempt + 1} 次重试")
+                time.sleep(retry_delay)  # 重试前等待
+            
+            print(f"开始流式处理文件数组: {file_ids}")
+            print(f"文件数量: {len(file_ids)}")
+            if logger:
+                logger.info(f"开始处理文件夹: {folder_name}, 文件数量: {len(file_ids)}, file_ids: {file_ids}")
+            
+            # 根据参考文档格式创建文件数组参数
+            file_array = []
+            for file_id in file_ids:
+                file_array.append(json.dumps({"file_id": file_id}))
+            
+            parameters = {
+                "input": file_array
+            }
+            
+            print(f"使用文件数组参数格式: {parameters}")
+            
+            # 创建流式工作流运行
+            stream = coze.workflows.runs.stream(
+                workflow_id=workflow_id,
+                parameters=parameters
+            )
+            
+            # 处理流式事件
+            messages, errors = handle_workflow_iterator(stream, file_ids, folder_name, workflow_id, logger)
+            
+            # 检查是否有超时错误
+            has_timeout_error = False
+            if errors:
+                for error in errors:
+                    error_str = str(error)
+                    if 'timeout' in error_str.lower() or 'error_code=5000' in error_str:
+                        has_timeout_error = True
+                        break
+            
+            # 如果有超时错误且还有重试机会，继续重试
+            if has_timeout_error and attempt < max_retries - 1:
+                warning_msg = f"检测到超时错误，将进行重试 (尝试 {attempt + 1}/{max_retries})"
+                print(f"   ⚠️  {warning_msg}")
+                if logger:
+                    logger.warning(f"{warning_msg}, 文件夹: {folder_name}")
+                continue
+            
+            # 如果有消息返回或者已经是最后一次重试，保存结果
+            if messages or attempt == max_retries - 1:
+                # 只保存JSON缓存
+                if messages and folder_name:
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    save_raw_response_cache(output_folder, folder_name, messages, timestamp, logger)
+                
+                if has_timeout_error and attempt == max_retries - 1:
+                    error_msg = f"达到最大重试次数 ({max_retries})，仍然失败"
+                    print(f"   ❌ {error_msg}")
+                    if logger:
+                        logger.error(f"{error_msg}, 文件夹: {folder_name}")
+                    return False, messages
+                
+                print("流式处理完成!")
+                if logger:
+                    logger.info(f"文件夹 {folder_name} 流式处理完成，消息数量: {len(messages)}")
+                return True, messages
+            
+        except Exception as e:
+            error_msg = f"流式处理文件数组失败: {str(e)}, 文件夹: {folder_name}"
+            
+            # 检查是否是超时相关的异常
+            is_timeout = 'timeout' in str(e).lower()
+            
+            if is_timeout and attempt < max_retries - 1:
+                print(f"   ⚠️  {error_msg}")
+                print(f"   🔄 将在 {retry_delay} 秒后重试 ({attempt + 1}/{max_retries})...")
+                if logger:
+                    logger.warning(f"{error_msg}, 将进行第 {attempt + 1} 次重试")
+                time.sleep(retry_delay)
+                continue
+            else:
+                print(error_msg)
+                if logger:
+                    logger.error(error_msg)
+                return False, []
+    
+    # 如果所有重试都失败
+    error_msg = f"所有重试均失败"
+    print(f"   ❌ {error_msg}")
+    if logger:
+        logger.error(f"{error_msg}, 文件夹: {folder_name}")
+    return False, []
 
-def process_folders(coze, workflow_id, wechat_folder, supported_formats, logger=None):
+def process_folders(coze, workflow_id, wechat_folder, supported_formats, logger=None, max_retries: int = 3, retry_delay: int = 5):
     """处理微信作文文件夹中的所有子文件夹"""
     print("=== 第一步：扫描文件夹结构 ===")
     if logger:
@@ -306,8 +360,17 @@ def process_folders(coze, workflow_id, wechat_folder, supported_formats, logger=
         print(f"   🔄 开始流式处理...")
         print(f"   📄 只保存JSON缓存文件")
         
-        # 处理这个文件夹的文件，只保存JSON
-        success, messages = process_files_with_workflow_stream(coze, workflow_id, file_ids, folder_path, folder_name, logger)
+        # 处理这个文件夹的文件，只保存JSON，传递重试参数
+        success, messages = process_files_with_workflow_stream(
+            coze, 
+            workflow_id, 
+            file_ids, 
+            folder_path, 
+            folder_name, 
+            logger,
+            max_retries=max_retries,
+            retry_delay=retry_delay
+        )
         
         if success:
             print(f"   ✅ 文件夹 '{folder_name}' 处理完成!")
@@ -342,17 +405,24 @@ def main():
     # ======= 配置设置区域 =======
     config_file = "config/config.translation.json"
     
-    folder_tobe_process = r"E:\zhenzhen_eng_coze\example\高一_10_reduced"
+    folder_tobe_process = r"E:\zhenzhen_eng_coze\example\高二_9_reduced"
     
     # 支持的图片格式 - 可以根据需要添加或删除格式
     supported_formats = ('.png', '.jpg', '.jpeg', '.bmp', '.gif')
     
+    # 重试配置
+    max_retries = 3  # 最大重试次数
+    retry_delay = 30  # 重试延迟（秒）
+    
     print(f"配置文件路径: {config_file}")
     print(f"微信作文文件夹: {folder_tobe_process}")
     print(f"支持的图片格式: {supported_formats}")
+    print(f"最大重试次数: {max_retries}")
+    print(f"重试延迟: {retry_delay}秒")
     logger.info(f"配置文件路径: {config_file}")
     logger.info(f"微信作文文件夹: {folder_tobe_process}")
     logger.info(f"支持的图片格式: {supported_formats}")
+    logger.info(f"最大重试次数: {max_retries}, 重试延迟: {retry_delay}秒")
     # ======= 配置设置区域结束 =======
     
     # 检查配置文件
@@ -389,7 +459,15 @@ def main():
         return
     
     # 开始处理
-    process_folders(coze, workflow_id, folder_tobe_process, supported_formats, logger)
+    process_folders(
+        coze, 
+        workflow_id, 
+        folder_tobe_process, 
+        supported_formats, 
+        logger,
+        max_retries=max_retries,
+        retry_delay=retry_delay
+    )
     logger.info("=== 所有处理完成 ===")
 
 if __name__ == "__main__":

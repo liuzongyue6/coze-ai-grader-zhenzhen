@@ -2,7 +2,7 @@
 多输入输出处理器 - 使用指定的file_id数组调用Coze Workflow流式接口并将结果保存到json文档
 后续的json处理交给下游格式
 """
-
+import re
 import os
 import json
 import glob
@@ -10,7 +10,7 @@ import logging
 from typing import Optional, List
 from datetime import datetime
 from pathlib import Path
-import time  # 在文件顶部添加这个import
+import time  
 
 from cozepy import (
     COZE_CN_BASE_URL,
@@ -162,7 +162,6 @@ def save_raw_response_cache(folder_path: str, folder_name: str, messages: List, 
             "timestamp": datetime.now().isoformat()
         })
     
-    # 保存到JSON缓存文件
     cache_file = os.path.join(folder_path, f"{folder_name}_response_cache_{timestamp}.json")
     try:
         with open(cache_file, 'w', encoding='utf-8') as f:
@@ -217,8 +216,21 @@ def handle_workflow_iterator(stream: Stream[WorkflowEvent], file_ids: List[str],
     
     return messages, errors
 
+def check_empty_result(messages: List) -> bool:
+    """检查工作流返回的结果是否为空"""
+    if not messages:
+        return True
+    
+    
+    for msg in messages:
+        msg_str = str(msg)
+        if re.search(r'output_arr_obj.*?:\s*\[\s*\]', msg_str):
+            return True
+    
+    return False  
+
 def process_files_with_workflow_stream(coze, workflow_id, file_ids: List[str], output_folder: str, folder_name: str = None, logger=None, max_retries: int = 3, retry_delay: int = 5):
-    """使用工作流流式接口处理指定的文件ID数组，只保存JSON缓存，支持重试机制"""
+    """使用工作流流式接口处理指定的文件ID数组，只保存JSON缓存，支持重试机制（包括空结果重试）"""
     
     for attempt in range(max_retries):
         try:
@@ -262,6 +274,20 @@ def process_files_with_workflow_stream(coze, workflow_id, file_ids: List[str], o
                         has_timeout_error = True
                         break
             
+            # 检查是否返回了空结果
+            has_empty_result = check_empty_result(messages)
+            
+            if has_empty_result:
+                warning_msg = f"检测到空结果 (output_arr_obj为空)"
+                print(f"   ⚠️  {warning_msg}")
+                if logger:
+                    logger.warning(f"{warning_msg}, 文件夹: {folder_name}, 尝试: {attempt + 1}/{max_retries}")
+                
+                # 如果还有重试机会，继续重试
+                if attempt < max_retries - 1:
+                    print(f"   🔄 将在 {retry_delay} 秒后重试...")
+                    continue
+            
             # 如果有超时错误且还有重试机会，继续重试
             if has_timeout_error and attempt < max_retries - 1:
                 warning_msg = f"检测到超时错误，将进行重试 (尝试 {attempt + 1}/{max_retries})"
@@ -277,6 +303,15 @@ def process_files_with_workflow_stream(coze, workflow_id, file_ids: List[str], o
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                     save_raw_response_cache(output_folder, folder_name, messages, timestamp, logger)
                 
+                # 如果是空结果且已达到最大重试次数
+                if has_empty_result and attempt == max_retries - 1:
+                    error_msg = f"达到最大重试次数 ({max_retries})，返回结果仍然为空"
+                    print(f"   ❌ {error_msg}")
+                    if logger:
+                        logger.error(f"{error_msg}, 文件夹: {folder_name}")
+                    return False, messages
+                
+                # 如果是超时错误且已达到最大重试次数
                 if has_timeout_error and attempt == max_retries - 1:
                     error_msg = f"达到最大重试次数 ({max_retries})，仍然失败"
                     print(f"   ❌ {error_msg}")
@@ -284,10 +319,12 @@ def process_files_with_workflow_stream(coze, workflow_id, file_ids: List[str], o
                         logger.error(f"{error_msg}, 文件夹: {folder_name}")
                     return False, messages
                 
-                print("流式处理完成!")
-                if logger:
-                    logger.info(f"文件夹 {folder_name} 流式处理完成，消息数量: {len(messages)}")
-                return True, messages
+                # 成功完成
+                if not has_empty_result and not has_timeout_error:
+                    print("流式处理完成!")
+                    if logger:
+                        logger.info(f"文件夹 {folder_name} 流式处理完成，消息数量: {len(messages)}")
+                    return True, messages
             
         except Exception as e:
             error_msg = f"流式处理文件数组失败: {str(e)}, 文件夹: {folder_name}"
@@ -308,14 +345,15 @@ def process_files_with_workflow_stream(coze, workflow_id, file_ids: List[str], o
                     logger.error(error_msg)
                 return False, []
     
-    # 如果所有重试都失败
-    error_msg = f"所有重试均失败"
-    print(f"   ❌ {error_msg}")
-    if logger:
-        logger.error(f"{error_msg}, 文件夹: {folder_name}")
-    return False, []
+        # 如果所有重试都失败
+        error_msg = f"所有重试均失败"
+        print(f"   ❌ {error_msg}")
+        if logger:
+            logger.error(f"{error_msg}, 文件夹: {folder_name}")
+        return False, []
+        
 
-def process_folders(coze, workflow_id, wechat_folder, supported_formats, logger=None, max_retries: int = 3, retry_delay: int = 5):
+def process_folders(coze, workflow_id, wechat_folder, supported_formats, logger=None, max_retries: int = 3, retry_delay: int = 5, folder_interval: int = 2):
     """处理微信作文文件夹中的所有子文件夹"""
     print("=== 第一步：扫描文件夹结构 ===")
     if logger:
@@ -385,6 +423,13 @@ def process_folders(coze, workflow_id, wechat_folder, supported_formats, logger=
             failed_folders.append(folder_name)
         
         print(f"   📋 进度: {idx}/{len(folders_data)} 个文件夹已处理")
+        
+        # 在处理下一个文件夹前添加延迟（最后一个文件夹不需要延迟）
+        if idx < len(folders_data) and folder_interval > 0:
+            print(f"   ⏱️  等待 {folder_interval} 秒后处理下一个文件夹...")
+            if logger:
+                logger.info(f"文件夹间隔延迟 {folder_interval} 秒")
+            time.sleep(folder_interval)
     
     # 输出最终统计
     if logger:
@@ -405,24 +450,28 @@ def main():
     # ======= 配置设置区域 =======
     config_file = "config/config.translation.json"
     
-    folder_tobe_process = r"E:\zhenzhen_eng_coze\example\高二_9_reduced"
+    folder_tobe_process = r"E:\zhenzhen_eng_coze\example\高一_11_reduced_debug"
     
     # 支持的图片格式 - 可以根据需要添加或删除格式
     supported_formats = ('.png', '.jpg', '.jpeg', '.bmp', '.gif')
     
     # 重试配置
     max_retries = 3  # 最大重试次数
-    retry_delay = 30  # 重试延迟（秒）
+    retry_delay = 3  # 重试延迟（秒）
+    
+    # 文件夹处理间隔配置
+    folder_interval = 1  # 每个文件夹处理完成后的等待时间（秒），设为0则不等待
     
     print(f"配置文件路径: {config_file}")
     print(f"微信作文文件夹: {folder_tobe_process}")
     print(f"支持的图片格式: {supported_formats}")
     print(f"最大重试次数: {max_retries}")
     print(f"重试延迟: {retry_delay}秒")
+    print(f"文件夹处理间隔: {folder_interval}秒")
     logger.info(f"配置文件路径: {config_file}")
     logger.info(f"微信作文文件夹: {folder_tobe_process}")
     logger.info(f"支持的图片格式: {supported_formats}")
-    logger.info(f"最大重试次数: {max_retries}, 重试延迟: {retry_delay}秒")
+    logger.info(f"最大重试次数: {max_retries}, 重试延迟: {retry_delay}秒, 文件夹间隔: {folder_interval}秒")
     # ======= 配置设置区域结束 =======
     
     # 检查配置文件
@@ -466,7 +515,8 @@ def main():
         supported_formats, 
         logger,
         max_retries=max_retries,
-        retry_delay=retry_delay
+        retry_delay=retry_delay,
+        folder_interval=folder_interval
     )
     logger.info("=== 所有处理完成 ===")
 

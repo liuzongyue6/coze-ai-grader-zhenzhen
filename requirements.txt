@@ -1,0 +1,17 @@
+# Coze API客户端
+cozepy>=0.1.0
+
+# 图片处理
+Pillow>=9.0.0
+
+# Markdown处理
+markdown>=3.4.0
+
+# HTML转图片
+playwright>=1.40.0
+
+# 数据可视化
+matplotlib>=3.5.0
+
+# Playwright首次使用需安装浏览器内核:
+# python -m playwright install chromium

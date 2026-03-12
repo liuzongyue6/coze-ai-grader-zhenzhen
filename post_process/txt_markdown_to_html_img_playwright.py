@@ -1,5 +1,5 @@
 """
-Markdown转图片高级工具 - markdown_to_image_html.py
+Markdown转图片高级工具 - txt_markdown_to_html_img_playwright.py
 
 功能说明：
 - 使用Playwright将markdown转换为高质量图片
@@ -283,7 +283,7 @@ def convert_markdown_to_image(markdown_content: str, output_path: str, width: in
         # 5. 转换为图片
         output_dir = os.path.dirname(output_path)
         
-        if not os.path.exists(output_dir):
+        if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
         
         try:

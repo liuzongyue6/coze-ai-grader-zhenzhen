@@ -21,8 +21,8 @@
 │   ├── api_response_format.py      # 通用API响应格式化器
 │   ├── json_to_markdown.py         # JSON转Markdown转换器
 │   ├── text_to_image_simple.py     # 简单文本转图片工具(PIL)
-│   └── txt_markdown_to_html_img_Playwright.py # Markdown转HTML图片工具(Playwright)
 │   └── txt_markdown_to_html_img.py # Markdown转HTML图片工具(chromium内核)
+│   └── txt_markdown_to_html_img_Playwright.py # Markdown转HTML图片工具(Playwright)
 ├── database/
 │   └── translation_mistake_scanner_report.py  # 翻译错误统计分析工具
 ├── utils/
@@ -108,7 +108,10 @@ python coze_workflow_client.py
 
 4. **生成图片报告** - 选择转换工具
    - `text_to_image_simple.py`: 使用PIL库，适合简单格式
-   - `txt_markdown_to_html_img.py`: 使用Playwright，支持完整Markdown语法
+   - `txt_markdown_to_html_img.py`: 基于 html2image，将Markdown转换为图片
+   - `txt_markdown_to_html_img_playwright.py`: 使用Playwright，支持完整Markdown语法
+   
+
 
 5. **错误分析** (翻译专用) - 运行 `translation_mistake_scanner_report.py`
    - 提取标记为"翻得不好"的错误
@@ -146,15 +149,13 @@ python coze_workflow_client.py
 
 - **txt_markdown_to_html_img_playwright.py**: Markdown转HTML图片
   - 完整Markdown语法支持
-  - 使用Playwright渲染
-  - 丰富的CSS样式
-  - 适合复杂格式
+  - 使用Playwright渲染，额外安装渲染为图片，使用内置Chromium
+  - CSS样式， 适合复杂格式
 
- - **txt_markdown_to_html_img.py**: Markdown转HTML图片
+- **txt_markdown_to_html_img.py**: Markdown转HTML图片
   - 完整Markdown语法支持
-  - 使用Chromium渲染
-  - 丰富的CSS样式
-  - 适合复杂格式
+  - 使用 html2image 渲染为图片，使用内置Chromium
+  - CSS样式， 适合复杂格式
 
 ### 数据分析工具
 

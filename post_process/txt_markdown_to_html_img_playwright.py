@@ -19,6 +19,7 @@ Markdown转图片高级工具 - markdown_to_image_html.py
 import os
 import sys
 import traceback
+import urllib.parse
 import markdown
 from typing import Optional
 from playwright.sync_api import sync_playwright
@@ -40,6 +41,21 @@ def _validate_png_file(path: str) -> tuple[bool, str]:
         return True, f"有效PNG({file_size} bytes)"
     except Exception as e:
         return False, f"校验失败: {e}"
+
+
+def _block_external_route(route) -> None:
+    """Block external non-data-URI requests for image/font/media/stylesheet/script
+    resource types to prevent hangs from unreachable remote resources and ensure
+    offline-reproducible screenshot results."""
+    request = route.request
+    if request.resource_type in ("image", "font", "media", "stylesheet", "script"):
+        parsed = urllib.parse.urlparse(request.url)
+        hostname = parsed.hostname or ""
+        is_local = hostname in ("localhost", "127.0.0.1", "::1") or hostname.endswith(".localhost")
+        if not request.url.startswith("data:") and not is_local:
+            route.abort()
+            return
+    route.continue_()
 
 def convert_markdown_to_image(markdown_content: str, output_path: str, width: int = 900, height: int = None) -> bool:
     """
@@ -294,7 +310,10 @@ def convert_markdown_to_image(markdown_content: str, output_path: str, width: in
                     viewport={"width": int(width), "height": viewport_height},
                     device_scale_factor=2
                 )
-                page.set_content(full_html, wait_until="networkidle")
+                # Block external network requests to ensure offline reproducibility
+                # and prevent hangs caused by unreachable remote resources.
+                page.route("**/*", _block_external_route)
+                page.set_content(full_html, wait_until="load", timeout=30000)
                 page.screenshot(
                     path=output_path,
                     full_page=full_page_mode,
